@@ -368,7 +368,8 @@
 
   /* ---------- state ---------- */
   const KEY = 'plink-v2';
-  let state = { sorted:0, shelved:0, level:1, sound:true, hinted:false, hinted2:false, hinted3:false, jars:null, tray:[] };
+  let state = { sorted:0, shelved:0, slates:0, level:1, pourCount:0, lastPerfect:0,
+                sound:true, hinted:false, hinted2:false, hinted3:false, jars:null, tray:[] };
   try {
     const raw = localStorage.getItem(KEY);
     if (raw) state = Object.assign(state, JSON.parse(raw));
@@ -540,7 +541,9 @@
   function fmt(n){ return n.toLocaleString(); }
   function renderStats(){
     statsEl.innerHTML = '<b>' + fmt(state.sorted) + '</b> beads sorted &nbsp;&middot;&nbsp; <b>' +
-      fmt(state.shelved) + '</b> ' + (state.shelved === 1 ? 'jar' : 'jars') + ' shelved';
+      fmt(state.shelved) + '</b> ' + (state.shelved === 1 ? 'jar' : 'jars') + ' shelved' +
+      (state.slates > 0 ? ' &nbsp;&middot;&nbsp; <b>' + fmt(state.slates) + '</b> clean ' +
+        (state.slates === 1 ? 'slate' : 'slates') : '');
   }
   renderStats();
   const TAKEBACK_HINT = 'tap a jar to take a bead back · hold to pour it all out';
@@ -550,6 +553,7 @@
   /* ---------- beads ---------- */
   let beadsLeft = 0;
   let heldBead = null;
+  let pendingSlateExtra = null; // non-null while caps that finish a clean slate are landing
 
   function makeBead(col, xPct, yPct, stagger, fall = true){
     const b = document.createElement('button');
@@ -644,9 +648,37 @@
     return bag;
   }
 
+  const PERFECT_EVERY = 5; // a finishing scoop becomes available every N pours
+
+  // A "finishing scoop": exactly the beads that top every partial jar up
+  // to CAP, so perfect sorting shelves everything — a clean slate. Only
+  // meaningful when every non-empty jar is uniform; the bag always fits
+  // (12 x partial jars <= TOTAL_CAP). Null when the moment isn't right.
+  function computePerfectScoop(){
+    const need = [];
+    for (const jar of state.jars){
+      if (!jar.length) continue;
+      if (!jar.every(id => id === jar[0])) return null;
+      for (let k = jar.length; k < CAP; k++) need.push(jar[0]);
+    }
+    if (!need.length || need.length > 36) return null;
+    for (let i = need.length - 1; i > 0; i--){
+      const j = Math.floor(Math.random() * (i + 1));
+      [need[i], need[j]] = [need[j], need[i]];
+    }
+    return need;
+  }
+
   function pour(withSound){
-    const bag = computeScoop();
+    let bag = null, perfect = false;
+    if (beadsLeft === 0 && state.pourCount - state.lastPerfect >= PERFECT_EVERY){
+      bag = computePerfectScoop();
+      perfect = !!bag;
+    }
+    if (!bag) bag = computeScoop();
     if (!bag){ showPourUI(); return; }
+    state.pourCount++;
+    if (perfect) state.lastPerfect = state.pourCount;
     centerStack.hidden = true;
     clearedMsg.innerHTML = '';
     const pts = scatterPositions(bag.length);
@@ -655,8 +687,17 @@
       makeBead(col, pts[i][0], pts[i][1], i);
     });
     if (withSound) pourSound();
+    if (perfect){
+      if (withSound) [523.25, 659.25, 880].forEach((f, i) =>
+        tone(f, { delay: 0.1 + i * 0.1, vol: 0.1, dur: 0.3 }));
+      hintEl.textContent = 'a finishing scoop ✦ every bead has a home';
+      hintEl.classList.remove('gone');
+      setTimeout(() => hintEl.classList.add('gone'), 4500);
+      announce('Poured a finishing scoop: these beads complete every jar.');
+    } else {
+      announce('Poured ' + bag.length + ' beads onto the tray.');
+    }
     save();
-    announce('Poured ' + bag.length + ' beads onto the tray.');
   }
 
   /* ---------- drag & drop ---------- */
@@ -838,7 +879,8 @@
       jar.setAttribute('aria-label', jarLabel(jarIndex));
       renderStats();
       save();
-      if (beadsLeft === 0 && pourBtn.hidden) showPourUI('tray sorted ✦');
+      if (state.jars.every(j => j.length === 0) && beadsLeft === 0) celebrateSlate();
+      else if (beadsLeft === 0 && pourBtn.hidden) showPourUI('tray sorted ✦');
       else if (beadsLeft > 0) updatePourUI(); // a freed jar may change the offer
     }, RM ? 200 : 1100);
   }
@@ -993,17 +1035,44 @@
     const before = activeColorCount(state.level);
     state.level++;
     const after = activeColorCount(state.level);
-    let msg = 'tray sorted ✦';
+    let extra = '';
     let said = 'Tray sorted. Pour another scoop when ready.';
     if (after > before){
       const col = COLORS[after - 1];
-      msg += '<br>a new color joins: <span class="dotc" style="--c:' + col.c +
+      extra = 'a new color joins: <span class="dotc" style="--c:' + col.c +
         ';--hi:' + col.hi + ';--lo:' + col.lo + '"></span> ' + col.name;
       said = 'Tray sorted. A new color joins the next scoop: ' + col.name + '.';
     }
     save();
-    showPourUI(msg);
+    // If every jar is empty or mid-cap, a clean slate is about to land —
+    // hold the toast and let the milestone take over when the caps finish.
+    const slateIncoming = jarEls.some(j => j.dataset.busy) &&
+      state.jars.every((jar, i) => jar.length === 0 || jarEls[i].dataset.busy);
+    if (slateIncoming){ pendingSlateExtra = extra; return; }
+    showPourUI('tray sorted ✦' + (extra ? '<br>' + extra : ''));
     announce(said);
+  }
+
+  function celebrateSlate(){
+    state.slates++;
+    const extra = pendingSlateExtra || '';
+    pendingSlateExtra = null;
+    renderStats();
+    save();
+    slateFanfare();
+    if (!RM) jarEls.forEach((jar, i) => setTimeout(() => {
+      jar.classList.remove('pop'); void jar.offsetWidth;
+      jar.classList.add('pop');
+      sparkle(jar);
+      setTimeout(() => jar.classList.remove('pop'), 600);
+    }, i * 110));
+    showPourUI('✦ clean slate ✦' + (extra ? '<br>' + extra : ''));
+    announce('Clean slate! Every jar shelved and the tray is clear.');
+  }
+
+  function slateFanfare(){
+    NOTES.forEach((f, i) => tone(f, { delay: i * 0.09, vol: 0.18, dur: 0.5 }));
+    tone(1046.5, { delay: NOTES.length * 0.09 + 0.06, vol: 0.2, dur: 0.9 });
   }
 
   function announce(msg){ sr.textContent = msg; }
@@ -1030,7 +1099,16 @@
     });
     updatePourUI();
   } else {
-    pour(false); // first scoop is already waiting
+    // A save captured mid-celebration can hold a full uniform jar whose
+    // cap never landed; finish those before offering the next scoop.
+    let owedCaps = 0;
+    state.jars.forEach((jar, i) => {
+      if (jar.length >= CAP && jar.every(id => id === jar[0])){
+        owedCaps++;
+        setTimeout(() => capJar(i), 600);
+      }
+    });
+    if (!owedCaps) pour(false); // first scoop is already waiting
   }
 })();
 </script>

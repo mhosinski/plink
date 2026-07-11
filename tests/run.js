@@ -65,6 +65,27 @@ cleanCase([Array(12).fill('a'), ['x']], ['a'], false, 'matching jar but full -> 
 cleanCase([['a', 'x'], ['y']], ['a'], false, 'only mixed/other jars -> none');
 cleanCase([['x']], [], false, 'empty tray -> vacuously none needed');
 
+// ---- computePerfectScoop: exact completion of every partial jar ----
+state = { level: 5, jars: [Array(7).fill('c0'), Array(4).fill('c1'), [], Array(11).fill('c0'), []] };
+const perfect = computePerfectScoop();
+const tally = {};
+(perfect || []).forEach(id => tally[id] = (tally[id] || 0) + 1);
+check(perfect && perfect.length === 14 && tally.c0 === 6 && tally.c1 === 8,
+  'perfect: bag exactly tops every partial jar (c0 x6, c1 x8)');
+state = { level: 5, jars: [['c0', 'c1'], []] };
+check(computePerfectScoop() === null, 'perfect: mixed jar -> not offered');
+state = { level: 5, jars: [[], [], [], [], []] };
+check(computePerfectScoop() === null, 'perfect: nothing partial -> not offered');
+state = { level: 9, jars: Array.from({ length: 5 }, (_, i) => ['c' + i]) };
+check(computePerfectScoop() === null, 'perfect: need 55 beads > 36 cap -> not offered');
+state = { level: 5, jars: [Array(11).fill('c2'), [], [], [], []] };
+check((computePerfectScoop() || []).length === 1, 'perfect: single finishing bead allowed');
+// invariant: a perfect bag always fits (total after = 12 x partial jars <= 60)
+state = { level: 9, jars: Array.from({ length: 5 }, (_, i) => Array(9).fill('c' + i)) };
+const big = computePerfectScoop();
+check(big && big.length === 15 && 45 + big.length <= TOTAL_CAP,
+  'perfect: five 9-bead jars -> 15-bead bag, fits capacity');
+
 // ---- computeScoop: no-deadlock invariant, property-tested ----
 // After every pour: either everything in play fits in the jars (tray can
 // clear) or some color has CAP beads in play (a shelve is achievable).

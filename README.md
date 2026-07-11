@@ -8,6 +8,9 @@ sit full until you pour some beads back. Each cleared tray brings a bigger scoop
 up to ten, a new bead color — with more colors than jars, you shelve to make room.
 Scoops are composed so the player can never deadlock: after every pour, either
 everything in play fits in the jars or some color has a full set of 12 available.
+Every so often a **finishing scoop** arrives — exactly the beads that complete
+every partial jar — and sorting it perfectly earns a **clean slate**: every jar
+shelved, the tray clear, and a little fanfare to mark it.
 No timer, no score pressure — progress persists in `localStorage`.
 
 ## Run it
