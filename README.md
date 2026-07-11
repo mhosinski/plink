@@ -37,6 +37,17 @@ Or without the `gh` CLI: push to any GitHub repo, then in the repo's
 **Settings → Pages**, set the source to the `main` branch, root folder.
 The game will be live at `https://<username>.github.io/plink/`.
 
+## Install on a phone
+
+plink is an installable web app: open the live URL, then **Share → Add to
+Home Screen** (iOS) or **Install app** (Android). Installed, it launches
+fullscreen, works offline, and — importantly on iOS — is exempt from
+Safari's seven-day storage eviction, so progress can't silently vanish.
+
+Progress lives on the device. Tap the stats line at the bottom for
+**copy backup** / **restore backup** — the save travels as text, so it can
+be pasted into notes or moved to another device.
+
 ## Notes
 
 - Sounds are synthesized with the Web Audio API — there are no audio assets.

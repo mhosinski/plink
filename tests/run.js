@@ -15,6 +15,18 @@ const src = fs.readFileSync(path.join(__dirname, '..', 'index.html'), 'utf8');
 const js = src.match(/<script>([\s\S]*)<\/script>/)[1];
 new Function(js); // throws on syntax error
 
+// PWA satellites: manifest parses with required fields; sw parses; all
+// referenced assets exist; index.html wires them up.
+const root = path.join(__dirname, '..');
+const manifest = JSON.parse(fs.readFileSync(path.join(root, 'manifest.webmanifest'), 'utf8'));
+for (const key of ['name', 'short_name', 'start_url', 'display', 'icons'])
+  if (!manifest[key]) throw new Error('manifest missing ' + key);
+for (const icon of manifest.icons)
+  fs.statSync(path.join(root, icon.src)); // throws if an icon file is missing
+new Function(fs.readFileSync(path.join(root, 'sw.js'), 'utf8'));
+if (!src.includes('manifest.webmanifest') || !src.includes('serviceWorker'))
+  throw new Error('index.html does not wire up the PWA');
+
 const SLICES = {
   scoop: ['function activeColorCount', 'function pour('],
   evict: ['function evictIndex', 'function reflowMinis'],

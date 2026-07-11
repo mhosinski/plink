@@ -4,6 +4,12 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#5c3d26">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="icon-180.png">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="plink">
 <title>plink — a bead-sorting fidget</title>
 <style>
   :root{
@@ -277,7 +283,10 @@
   .tape-btn:active{transform:rotate(-1deg) scale(.97);}
 
   /* ---------- footer ---------- */
+  .statsbar{display:flex; flex-direction:column; align-items:center;}
   .stats{
+    background:none; border:0; cursor:pointer;
+    width:100%;
     padding:10px 6px 2px;
     text-align:center;
     font-size:12.5px; font-weight:600;
@@ -286,6 +295,17 @@
     font-variant-numeric:tabular-nums;
   }
   .stats b{color:var(--cream); font-weight:800;}
+  .backup{
+    display:flex; gap:10px; justify-content:center; flex-wrap:wrap;
+    padding:8px 0 2px;
+  }
+  .backup[hidden]{display:none;}
+  .tape-sm{font-size:15px; padding:8px 16px 10px;}
+  .backup-note{
+    width:100%; margin:4px 0 0;
+    text-align:center;
+    font-size:11px; color:var(--cream-dim);
+  }
 
   .sr{
     position:absolute; width:1px; height:1px;
@@ -324,7 +344,15 @@
     </div>
   </section>
 
-  <footer class="stats" id="stats"></footer>
+  <footer class="statsbar">
+    <button class="stats" id="stats" aria-expanded="false" aria-controls="backupPanel"
+      aria-label="Progress. Press for backup options."></button>
+    <div class="backup" id="backupPanel" hidden>
+      <button class="tape-btn tape-sm" id="copySaveBtn">copy backup</button>
+      <button class="tape-btn tape-sm" id="restoreSaveBtn">restore backup</button>
+      <p class="backup-note" id="backupNote">your beads, jars, and shelf as text — paste it somewhere safe, or into another device</p>
+    </div>
+  </footer>
   <div class="sr" aria-live="polite" id="sr"></div>
 </main>
 
@@ -1108,6 +1136,47 @@
   soundBtn.setAttribute('aria-pressed', String(state.sound));
   soundBtn.innerHTML = '♫ ' + (state.sound ? 'on' : 'off');
   if (!state.sound) soundBtn.setAttribute('aria-label', 'Sound off');
+
+  /* ---------- installable app & save backup ---------- */
+  // Offline cache; an installed app is also exempt from Safari's 7-day
+  // storage eviction, which is the whole point — real players live here.
+  if ('serviceWorker' in navigator)
+    navigator.serviceWorker.register('sw.js').catch(() => {});
+  if (navigator.storage && navigator.storage.persist)
+    navigator.storage.persist().catch(() => {});
+
+  const backupPanel = document.getElementById('backupPanel');
+  const backupNote = document.getElementById('backupNote');
+  const NOTE_DEFAULT = backupNote.textContent;
+  statsEl.addEventListener('click', () => {
+    backupPanel.hidden = !backupPanel.hidden;
+    statsEl.setAttribute('aria-expanded', String(!backupPanel.hidden));
+    backupNote.textContent = NOTE_DEFAULT;
+  });
+  document.getElementById('copySaveBtn').addEventListener('click', async () => {
+    save();
+    try {
+      await navigator.clipboard.writeText(JSON.stringify(state));
+      backupNote.textContent = 'backup copied ✓ paste it somewhere safe';
+    } catch (e) {
+      backupNote.textContent = 'couldn’t reach the clipboard — try again after tapping the page';
+    }
+    announce(backupNote.textContent);
+  });
+  document.getElementById('restoreSaveBtn').addEventListener('click', async () => {
+    try {
+      const text = await navigator.clipboard.readText();
+      const data = JSON.parse(text);
+      if (!data || typeof data.sorted !== 'number' || !Array.isArray(data.jars))
+        throw new Error('not a plink backup');
+      if (!confirm('Replace the beads on this device with the backup in your clipboard?')) return;
+      localStorage.setItem(KEY, JSON.stringify(data));
+      location.reload();
+    } catch (e) {
+      backupNote.textContent = 'that doesn’t look like a plink backup — copy one first, then restore';
+      announce(backupNote.textContent);
+    }
+  });
 
   // Restore leftover tray beads from the last visit, or pour a fresh scoop.
   if (Array.isArray(state.tray) && state.tray.length){

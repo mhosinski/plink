@@ -170,9 +170,13 @@ using it for parked work loses the fact that real items remain.
 
 ## Build, Run & Deploy
 
-There is no build step: the entire game is a single self-contained
-`index.html` (vanilla JS, inline CSS, Web Audio — no dependencies, no
-network requests).
+There is no build step: the game is a single self-contained `index.html`
+(vanilla JS, inline CSS, Web Audio — no dependencies), plus thin PWA
+satellites: `manifest.webmanifest`, `sw.js`, and generated `icon-*.png`.
+The service worker is stale-while-revalidate, so installed apps play
+offline and pick up a deploy on their **next** launch (curl-based deploy
+verification is unaffected — it hits the network). If the asset list in
+`sw.js` changes, bump its `CACHE` version string.
 
 ```bash
 python3 -m http.server 8000        # run locally → http://localhost:8000
