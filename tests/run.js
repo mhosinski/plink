@@ -113,6 +113,21 @@ const big = computePerfectScoop();
 check(big && big.length === 15 && 45 + big.length <= TOTAL_CAP,
   'perfect: five 9-bead jars -> 15-bead bag, fits capacity');
 
+// ---- backfillShelf: synthesized history for counter-only shelves ----
+const bf = backfillShelf(14, 8, 1234);
+check(bf.length === 14, 'backfill: one entry per missing jar');
+check(JSON.stringify(bf) === JSON.stringify(backfillShelf(14, 8, 1234)),
+  'backfill: deterministic for the same save');
+check(JSON.stringify(bf) !== JSON.stringify(backfillShelf(14, 8, 99)),
+  'backfill: different saves differ');
+check(bf.every(e => e.s === 1 && e.t === null), 'backfill: entries flagged seeded, no fake dates');
+const poolOK = bf.every((e, k) => {
+  const levelAt = 1 + Math.floor(((k + 1) / 15) * 7);
+  return COLORS.slice(0, activeColorCount(levelAt)).some(c => c.id === e.c);
+});
+check(poolOK, 'backfill: colors respect the unlock curve at each point');
+check(backfillShelf(0, 8, 1).length === 0, 'backfill: nothing missing -> nothing seeded');
+
 // ---- computeScoop: no-deadlock invariant, property-tested ----
 // After every pour: either everything in play fits in the jars (tray can
 // clear) or some color has CAP beads in play (a shelve is achievable).
