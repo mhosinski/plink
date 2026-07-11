@@ -368,7 +368,7 @@
 
   /* ---------- state ---------- */
   const KEY = 'plink-v2';
-  let state = { sorted:0, shelved:0, slates:0, level:1, pourCount:0, lastPerfect:0,
+  let state = { sorted:0, shelved:0, slates:0, level:1, pourCount:0, nextPerfect:0,
                 sound:true, hinted:false, hinted2:false, hinted3:false, jars:null, tray:[] };
   try {
     const raw = localStorage.getItem(KEY);
@@ -388,6 +388,7 @@
   state.jars = state.jars.map(jar => jar.map(id => RETIRED[id] || id));
   if (Array.isArray(state.tray))
     state.tray.forEach(t => { t.id = RETIRED[t.id] || t.id; });
+  if (!state.nextPerfect) state.nextPerfect = rollNextPerfect();
   function syncTray(){
     state.tray = Array.from(tray.querySelectorAll('.bead')).map(b => ({
       id: b.dataset.color,
@@ -648,7 +649,12 @@
     return bag;
   }
 
-  const PERFECT_EVERY = 5; // a finishing scoop becomes available every N pours
+  // Finishing scoops arrive on an unpredictable cadence — a random gap,
+  // re-rolled after each one — and are never announced: the scoop looks
+  // ordinary, and the clean slate is discovered at the last bead.
+  function rollNextPerfect(){
+    return state.pourCount + 3 + Math.floor(Math.random() * 6); // 3-8 pours away
+  }
 
   // A "finishing scoop": exactly the beads that top every partial jar up
   // to CAP, so perfect sorting shelves everything — a clean slate. Only
@@ -670,15 +676,15 @@
   }
 
   function pour(withSound){
-    let bag = null, perfect = false;
-    if (beadsLeft === 0 && state.pourCount - state.lastPerfect >= PERFECT_EVERY){
+    let bag = null, dealtPerfect = false;
+    if (beadsLeft === 0 && state.pourCount >= state.nextPerfect){
       bag = computePerfectScoop();
-      perfect = !!bag;
+      dealtPerfect = !!bag;
     }
     if (!bag) bag = computeScoop();
     if (!bag){ showPourUI(); return; }
     state.pourCount++;
-    if (perfect) state.lastPerfect = state.pourCount;
+    if (dealtPerfect) state.nextPerfect = rollNextPerfect();
     centerStack.hidden = true;
     clearedMsg.innerHTML = '';
     const pts = scatterPositions(bag.length);
@@ -687,17 +693,8 @@
       makeBead(col, pts[i][0], pts[i][1], i);
     });
     if (withSound) pourSound();
-    if (perfect){
-      if (withSound) [523.25, 659.25, 880].forEach((f, i) =>
-        tone(f, { delay: 0.1 + i * 0.1, vol: 0.1, dur: 0.3 }));
-      hintEl.textContent = 'a finishing scoop ✦ every bead has a home';
-      hintEl.classList.remove('gone');
-      setTimeout(() => hintEl.classList.add('gone'), 4500);
-      announce('Poured a finishing scoop: these beads complete every jar.');
-    } else {
-      announce('Poured ' + bag.length + ' beads onto the tray.');
-    }
     save();
+    announce('Poured ' + bag.length + ' beads onto the tray.');
   }
 
   /* ---------- drag & drop ---------- */
