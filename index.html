@@ -839,6 +839,7 @@
       renderStats();
       save();
       if (beadsLeft === 0 && pourBtn.hidden) showPourUI('tray sorted ✦');
+      else if (beadsLeft > 0) updatePourUI(); // a freed jar may change the offer
     }, RM ? 200 : 1100);
   }
 
@@ -953,14 +954,34 @@
     centerStack.hidden = false;
   }
 
-  // Leftover beads shouldn't strand the player: with only a few beads
-  // still on the tray, offer the next scoop from a docked button.
+  // A clean move exists when some tray bead fits a non-full jar that is
+  // empty or holds only that bead's color (every() is true on empties).
+  function hasCleanMove(){
+    const trayColors = new Set();
+    tray.querySelectorAll('.bead').forEach(b => trayColors.add(b.dataset.color));
+    for (const color of trayColors)
+      for (const jar of state.jars)
+        if (jar.length < CAP && jar.every(id => id === color)) return true;
+    return false;
+  }
+
+  // The player should never face a tray they can't act on: offer the
+  // next scoop when only a few beads remain, or whenever sorting on
+  // without dirtying a jar is impossible. If the jars are too full to
+  // pour, surface the shelve nudge instead (computeScoop() guarantees
+  // a shelve is achievable in that case).
   function updatePourUI(){
     if (beadsLeft === 0) return; // trayCleared owns the full celebration
-    if (beadsLeft <= POUR_AT && computeScoop()){
-      centerStack.classList.add('docked');
+    const stuck = beadsLeft <= POUR_AT || !hasCleanMove();
+    if (!stuck){ centerStack.hidden = true; return; }
+    centerStack.classList.add('docked');
+    if (computeScoop()){
       clearedMsg.innerHTML = '';
       pourBtn.hidden = false;
+      centerStack.hidden = false;
+    } else if (!hasCleanMove()){
+      clearedMsg.innerHTML = 'gather twelve of one color to shelve it';
+      pourBtn.hidden = true;
       centerStack.hidden = false;
     } else {
       centerStack.hidden = true;
