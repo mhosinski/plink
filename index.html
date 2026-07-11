@@ -1,0 +1,799 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#5c3d26">
+<title>plink — a bead-sorting fidget</title>
+<style>
+  :root{
+    --wood-1:#6d4a30;
+    --wood-2:#5c3d26;
+    --wood-3:#4a2f1c;
+    --felt:#2f4a41;
+    --felt-deep:#253b34;
+    --cream:#f3e7d3;
+    --cream-dim:rgba(243,231,211,.55);
+    --tape:#f0e9d8;
+    --tape-ink:#6b5335;
+    --round:ui-rounded,"SF Pro Rounded","Hiragino Maru Gothic ProN","Arial Rounded MT Bold","Segoe UI",system-ui,sans-serif;
+    --marker:"Marker Felt","Segoe Print","Comic Sans MS",cursive;
+  }
+  *{box-sizing:border-box;}
+  html,body{height:100%;}
+  body{
+    margin:0;
+    background:
+      radial-gradient(120% 90% at 50% 0%, rgba(255,220,170,.10), transparent 60%),
+      radial-gradient(140% 120% at 50% 110%, rgba(0,0,0,.38), transparent 55%),
+      repeating-linear-gradient(90deg,
+        var(--wood-1) 0px, var(--wood-2) 46px, var(--wood-1) 47px,
+        var(--wood-2) 90px, var(--wood-3) 91px, var(--wood-1) 138px),
+      var(--wood-2);
+    color:var(--cream);
+    font-family:var(--round);
+    overscroll-behavior:none;
+    -webkit-user-select:none; user-select:none;
+    -webkit-touch-callout:none;
+    -webkit-tap-highlight-color:transparent;
+    overflow:hidden;
+  }
+  #app{
+    height:100dvh;
+    max-width:520px;
+    margin:0 auto;
+    display:flex;
+    flex-direction:column;
+    padding:calc(10px + env(safe-area-inset-top)) 14px calc(8px + env(safe-area-inset-bottom));
+  }
+  button{font-family:inherit;}
+  button:focus-visible, .bead:focus-visible, .jar:focus-visible{
+    outline:2px solid var(--cream);
+    outline-offset:3px;
+    border-radius:8px;
+  }
+
+  /* ---------- header ---------- */
+  .top{
+    display:flex; align-items:flex-start; justify-content:space-between;
+    padding:2px 4px 8px;
+  }
+  .logo{
+    margin:0;
+    font-size:34px; font-weight:800; letter-spacing:.02em; line-height:1;
+    color:var(--cream);
+    text-shadow:0 2px 0 rgba(0,0,0,.28);
+  }
+  .logo .li{position:relative; display:inline-block;}
+  .logo .dot{
+    position:absolute; left:50%; top:-.13em;
+    width:.2em; height:.2em; margin-left:-.1em;
+    border-radius:50%;
+    background:radial-gradient(circle at 32% 30%, #ff8ba0, #e0475c 55%, #8f1f33);
+    box-shadow:0 1px 2px rgba(0,0,0,.35);
+    transition:background .3s;
+  }
+  .tagline{
+    margin:5px 0 0; font-size:12px; font-weight:600;
+    letter-spacing:.14em; text-transform:uppercase;
+    color:var(--cream-dim);
+  }
+  .sound{
+    background:rgba(0,0,0,.22);
+    border:1px solid rgba(243,231,211,.25);
+    color:var(--cream);
+    border-radius:999px;
+    min-width:44px; min-height:36px;
+    padding:6px 13px;
+    font-size:13px; font-weight:700;
+    cursor:pointer;
+    transition:opacity .2s;
+  }
+  .sound[aria-pressed="false"]{opacity:.45; text-decoration:line-through;}
+
+  /* ---------- jars ---------- */
+  .jars{
+    display:flex; justify-content:space-between; gap:6px;
+    padding:6px 2px 14px;
+    border-bottom:2px solid rgba(0,0,0,.22);
+    box-shadow:0 2px 0 rgba(255,255,255,.05);
+  }
+  .jar{
+    flex:1 1 0;
+    background:none; border:0; padding:0;
+    display:flex; flex-direction:column; align-items:center;
+    cursor:pointer;
+    touch-action:manipulation;
+    transition:transform .15s ease;
+  }
+  .jar.hover{transform:translateY(-4px) scale(1.06);}
+  .jar.pop{animation:pop .5s ease;}
+  @keyframes pop{35%{transform:translateY(-7px) scale(1.1);}}
+  .jar.tip-sm .glass{transform:rotate(-10deg);}
+  .jar.tip .glass{transform:rotate(-24deg) translateY(-3px);}
+  .glass{
+    position:relative;
+    transition:transform .2s ease;
+    width:100%; max-width:64px; height:76px;
+    border-radius:8px 8px 14px 14px;
+    background:linear-gradient(180deg, rgba(255,255,255,.20), rgba(255,255,255,.09) 30%, rgba(255,255,255,.13));
+    border:1.5px solid rgba(255,255,255,.38);
+    box-shadow:inset 0 -8px 14px rgba(0,0,0,.16), 0 3px 5px rgba(0,0,0,.3);
+  }
+  .glass::before{ /* rim */
+    content:""; position:absolute; left:-4px; right:-4px; top:-5px; height:9px;
+    border-radius:5px;
+    background:linear-gradient(180deg, rgba(255,255,255,.42), rgba(255,255,255,.16));
+    border:1px solid rgba(255,255,255,.4);
+  }
+  .glass::after{ /* shine */
+    content:""; position:absolute; left:9%; top:12%; width:14%; height:64%;
+    border-radius:999px;
+    background:linear-gradient(180deg, rgba(255,255,255,.5), rgba(255,255,255,0));
+    pointer-events:none;
+  }
+  .fill{position:absolute; inset:6px 5px 5px;}
+  .mini{
+    position:absolute;
+    width:13px; height:13px; border-radius:50%;
+    background:radial-gradient(circle at 32% 30%, var(--hi), var(--c) 52%, var(--lo));
+    box-shadow:0 1px 1px rgba(0,0,0,.3);
+  }
+  .mini::after{
+    content:""; position:absolute; left:50%; top:50%;
+    width:38%; height:38%; transform:translate(-50%,-50%);
+    border-radius:50%;
+    background:rgba(20,10,5,.55);
+    box-shadow:inset 0 1px 1px rgba(0,0,0,.5);
+  }
+  .mini.drop-in{animation:mini-in .25s ease-out;}
+  @keyframes mini-in{from{transform:translateY(-26px); opacity:.6;} to{transform:none; opacity:1;}}
+  .lid{
+    position:absolute; left:-5px; right:-5px; top:-9px; height:13px;
+    border-radius:6px;
+    background:linear-gradient(180deg,#8a6a4a,#5f4227);
+    border:1px solid rgba(0,0,0,.35);
+    box-shadow:0 2px 3px rgba(0,0,0,.4);
+    opacity:0; transform:translateY(-18px) rotate(-8deg);
+    transition:opacity .25s, transform .25s cubic-bezier(.3,1.6,.5,1);
+    pointer-events:none;
+  }
+  .jar.capped .lid{opacity:1; transform:none;}
+  .spark{
+    position:absolute; font-size:13px; color:#ffe9a8;
+    pointer-events:none; z-index:60;
+    animation:spark .7s ease-out forwards;
+  }
+  @keyframes spark{
+    from{opacity:1; transform:translate(0,0) scale(.6);}
+    to{opacity:0; transform:translate(var(--sx), var(--sy)) scale(1.25);}
+  }
+
+  /* ---------- tray ---------- */
+  .tray-wrap{flex:1; display:flex; padding:16px 0 10px; min-height:0;}
+  .tray{
+    position:relative;
+    flex:1;
+    border-radius:22px;
+    background:
+      radial-gradient(90% 70% at 30% 25%, rgba(255,255,255,.045), transparent 60%),
+      radial-gradient(100% 80% at 70% 80%, rgba(0,0,0,.14), transparent 55%),
+      var(--felt);
+    border:7px solid var(--wood-3);
+    box-shadow:
+      inset 0 4px 14px rgba(0,0,0,.42),
+      inset 0 -2px 6px rgba(255,255,255,.05),
+      0 5px 10px rgba(0,0,0,.32);
+  }
+  .hint{
+    position:absolute; top:12px; left:0; right:0;
+    text-align:center;
+    font-size:13px; font-weight:600; color:rgba(243,231,211,.7);
+    pointer-events:none;
+    transition:opacity .6s;
+  }
+  .hint.gone{opacity:0;}
+
+  /* ---------- beads ---------- */
+  .bead{
+    position:absolute;
+    width:42px; height:42px;
+    margin:-21px 0 0 -21px;
+    padding:0; border:0;
+    border-radius:50%;
+    background:radial-gradient(circle at 32% 28%, var(--hi), var(--c) 50%, var(--lo) 100%);
+    box-shadow:0 2px 4px rgba(0,0,0,.35), inset 0 -2px 4px rgba(0,0,0,.18);
+    cursor:grab;
+    touch-action:none;
+    z-index:10;
+  }
+  .bead::before{ /* gloss */
+    content:""; position:absolute; left:16%; top:10%;
+    width:30%; height:22%;
+    border-radius:50%;
+    background:rgba(255,255,255,.55);
+    filter:blur(1px);
+    transform:rotate(-25deg);
+  }
+  .bead::after{ /* hole */
+    content:""; position:absolute; left:50%; top:50%;
+    width:36%; height:36%; transform:translate(-50%,-50%);
+    border-radius:50%;
+    background:radial-gradient(circle at 42% 36%, rgba(60,30,20,.6), rgba(15,8,5,.8));
+    box-shadow:inset 0 2px 3px rgba(0,0,0,.6), 0 1px 1px rgba(255,255,255,.18);
+  }
+  .bead.drag{cursor:grabbing; z-index:100;}
+  .bead.held{
+    z-index:90;
+    box-shadow:0 6px 12px rgba(0,0,0,.45), 0 0 0 3px rgba(243,231,211,.65);
+  }
+  .bead.landing{animation:land .45s cubic-bezier(.25,1.4,.45,1) both;}
+  @keyframes land{
+    from{transform:translateY(-46vh) scale(.7); opacity:0;}
+    60%{opacity:1;}
+    to{transform:none;}
+  }
+
+  /* ---------- tape button / toast ---------- */
+  .center-stack{
+    position:absolute; left:50%; top:50%;
+    transform:translate(-50%,-50%);
+    display:flex; flex-direction:column; align-items:center; gap:14px;
+    transition:opacity .4s;
+  }
+  .center-stack[hidden]{display:none;}
+  .cleared{
+    font-size:15px; font-weight:700; letter-spacing:.06em;
+    color:var(--cream);
+    text-shadow:0 1px 2px rgba(0,0,0,.4);
+  }
+  .cleared:empty{display:none;}
+  .tape-btn{
+    font-family:var(--marker);
+    font-size:21px;
+    color:var(--tape-ink);
+    background:var(--tape);
+    border:0;
+    padding:13px 30px 15px;
+    transform:rotate(-2deg);
+    cursor:pointer;
+    box-shadow:0 4px 8px rgba(0,0,0,.35);
+    clip-path:polygon(2% 12%, 5% 0%, 97% 4%, 100% 22%, 98% 88%, 95% 100%, 3% 97%, 0% 78%);
+    opacity:.95;
+    transition:transform .15s;
+  }
+  .tape-btn:hover{transform:rotate(-2deg) scale(1.05);}
+  .tape-btn:active{transform:rotate(-1deg) scale(.97);}
+
+  /* ---------- footer ---------- */
+  .stats{
+    padding:10px 6px 2px;
+    text-align:center;
+    font-size:12.5px; font-weight:600;
+    letter-spacing:.08em;
+    color:var(--cream-dim);
+    font-variant-numeric:tabular-nums;
+  }
+  .stats b{color:var(--cream); font-weight:800;}
+
+  .sr{
+    position:absolute; width:1px; height:1px;
+    overflow:hidden; clip:rect(0 0 0 0); white-space:nowrap;
+  }
+
+  @media (prefers-reduced-motion: reduce){
+    .bead.landing,.jar.pop,.mini.drop-in,.spark{animation:none;}
+    .jar,.glass,.lid,.tape-btn,.hint{transition:none;}
+  }
+  @media (min-height:760px){
+    .glass{height:86px;}
+    .bead{width:46px; height:46px; margin:-23px 0 0 -23px;}
+  }
+</style>
+</head>
+<body>
+<main id="app">
+  <header class="top">
+    <div>
+      <h1 class="logo">pl<span class="li">&#305;<span class="dot" id="logoDot"></span></span>nk</h1>
+      <p class="tagline">a bead-sorting fidget</p>
+    </div>
+    <button class="sound" id="soundBtn" aria-pressed="true" aria-label="Sound on">&#9835; on</button>
+  </header>
+
+  <section class="jars" id="jars" aria-label="Jars"></section>
+
+  <section class="tray-wrap">
+    <div class="tray" id="tray" aria-label="Bead tray">
+      <p class="hint" id="hint">drag beads into jars &mdash; every jar plays its own note</p>
+      <div class="center-stack" id="centerStack" hidden>
+        <p class="cleared" id="clearedMsg"></p>
+        <button class="tape-btn" id="pourBtn">pour a scoop</button>
+      </div>
+    </div>
+  </section>
+
+  <footer class="stats" id="stats"></footer>
+  <div class="sr" aria-live="polite" id="sr"></div>
+</main>
+
+<script>
+(() => {
+  const COLORS = [
+    { id:'cherry',     name:'cherry',     c:'#e0475c', hi:'#ff8ba0', lo:'#8f1f33' },
+    { id:'clementine', name:'clementine', c:'#ef8f3a', hi:'#ffc98e', lo:'#a1541a' },
+    { id:'honey',      name:'honey',      c:'#f2c94c', hi:'#ffe9a8', lo:'#a97f1d' },
+    { id:'jade',       name:'jade',       c:'#43a377', hi:'#8fe0bb', lo:'#1f5c41' },
+    { id:'cornflower', name:'cornflower', c:'#5b7fd6', hi:'#a8c0ff', lo:'#2c4a94' },
+  ];
+  // Left to right, an ascending C-major pentatonic: C5 D5 E5 G5 A5.
+  // Any drop order sounds consonant, so sorting composes little melodies.
+  const NOTES = [523.25, 587.33, 659.25, 783.99, 880.00];
+  const JAR_COUNT = NOTES.length;
+  const CAP = 12;
+  const SCOOP = 22;
+  const RM = matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  const tray = document.getElementById('tray');
+  const jarsEl = document.getElementById('jars');
+  const statsEl = document.getElementById('stats');
+  const hintEl = document.getElementById('hint');
+  const centerStack = document.getElementById('centerStack');
+  const clearedMsg = document.getElementById('clearedMsg');
+  const pourBtn = document.getElementById('pourBtn');
+  const soundBtn = document.getElementById('soundBtn');
+  const logoDot = document.getElementById('logoDot');
+  const sr = document.getElementById('sr');
+
+  /* ---------- state ---------- */
+  const KEY = 'plink-v2';
+  let state = { sorted:0, shelved:0, sound:true, hinted:false, hinted2:false, jars:null };
+  try {
+    const raw = localStorage.getItem(KEY);
+    if (raw) state = Object.assign(state, JSON.parse(raw));
+    else {
+      const old = localStorage.getItem('plink-v1');
+      if (old){
+        const o = JSON.parse(old);
+        ['sorted','shelved','sound','hinted'].forEach(k => { if (k in o) state[k] = o[k]; });
+      }
+    }
+  } catch(e){}
+  if (!Array.isArray(state.jars) || state.jars.length !== JAR_COUNT)
+    state.jars = Array.from({ length: JAR_COUNT }, () => []);
+  function save(){ try { localStorage.setItem(KEY, JSON.stringify(state)); } catch(e){} }
+
+  /* ---------- audio ---------- */
+  let ctx = null;
+  function ac(){
+    if (!ctx) ctx = new (window.AudioContext || window.webkitAudioContext)();
+    if (ctx.state === 'suspended') ctx.resume();
+    return ctx;
+  }
+  function tone(freq, { vol=0.22, dur=0.4, delay=0, type='triangle' } = {}){
+    if (!state.sound) return;
+    const a = ac(), t = a.currentTime + delay;
+    const g = a.createGain();
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(vol, t + 0.008);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    g.connect(a.destination);
+    const o = a.createOscillator();
+    o.type = type; o.frequency.value = freq;
+    o.connect(g); o.start(t); o.stop(t + dur + 0.05);
+    const g2 = a.createGain();
+    g2.gain.setValueAtTime(0.0001, t);
+    g2.gain.exponentialRampToValueAtTime(vol * 0.28, t + 0.006);
+    g2.gain.exponentialRampToValueAtTime(0.0001, t + dur * 0.45);
+    g2.connect(a.destination);
+    const o2 = a.createOscillator();
+    o2.type = 'sine'; o2.frequency.value = freq * 2.01;
+    o2.connect(g2); o2.start(t); o2.stop(t + dur);
+  }
+  function pourSound(){
+    if (!state.sound) return;
+    const a = ac(), t = a.currentTime;
+    const len = Math.floor(a.sampleRate * 0.45);
+    const buf = a.createBuffer(1, len, a.sampleRate);
+    const d = buf.getChannelData(0);
+    for (let i = 0; i < len; i++) d[i] = (Math.random() * 2 - 1) * (1 - i / len);
+    const src = a.createBufferSource(); src.buffer = buf;
+    const f = a.createBiquadFilter(); f.type = 'lowpass'; f.frequency.value = 1100;
+    const g = a.createGain();
+    g.gain.setValueAtTime(0.16, t);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + 0.45);
+    src.connect(f); f.connect(g); g.connect(a.destination);
+    src.start(t);
+  }
+  function arpeggio(base){
+    [1, 1.125, 1.25, 1.5, 2].forEach((r, i) => tone(base * r, { delay: i * 0.085, vol: 0.16, dur: 0.5 }));
+  }
+  function clearChime(){ tone(659.25, { vol:0.14 }); tone(880, { delay:0.12, vol:0.14 }); }
+
+  /* ---------- jars ---------- */
+  const jarEls = [];
+  const SLOT_JITTER = [];
+  for (let i = 0; i < CAP; i++) SLOT_JITTER.push([Math.random()*6-3, Math.random()*4-2]);
+  function slotPos(i){
+    const col = i % 3, row = Math.floor(i / 3);
+    return [12 + col * 31 + SLOT_JITTER[i][0], 3 + row * 21 + SLOT_JITTER[i][1]];
+  }
+  function jarLabel(i){
+    return 'Jar ' + (i + 1) + ', ' + state.jars[i].length + ' of ' + CAP +
+      ' beads. Press to take the last bead back; hold or shift-press to empty.';
+  }
+  const HOLD_MS = 500;
+  for (let i = 0; i < JAR_COUNT; i++){
+    const b = document.createElement('button');
+    b.className = 'jar';
+    b.dataset.index = i;
+    b.setAttribute('aria-label', jarLabel(i));
+    b.innerHTML = '<span class="glass"><span class="fill"></span><span class="lid"></span></span>';
+    jarsEl.appendChild(b);
+    jarEls.push(b);
+    state.jars[i].forEach((colorId, idx) => {
+      const col = COLORS.find(c => c.id === colorId) || COLORS[0];
+      addMini(i, col, idx, false);
+    });
+    let holdTimer = 0, holdFired = false;
+    const cancelHold = () => clearTimeout(holdTimer);
+    b.addEventListener('pointerdown', () => {
+      if (heldBead || b.dataset.busy) return;
+      holdFired = false;
+      holdTimer = setTimeout(() => { holdFired = true; pourBack(i, CAP); }, HOLD_MS);
+    });
+    b.addEventListener('pointerup', cancelHold);
+    b.addEventListener('pointerleave', cancelHold);
+    b.addEventListener('pointercancel', cancelHold);
+    b.addEventListener('click', () => {
+      if (heldBead){ attemptDrop(heldBead, b); return; }
+      if (holdFired){ holdFired = false; return; }
+      pourBack(i, 1);
+    });
+    b.addEventListener('keydown', ev => {
+      if (ev.key === 'Enter' && ev.shiftKey && !heldBead){
+        ev.preventDefault();
+        pourBack(i, CAP);
+      }
+    });
+  }
+  function addMini(jarIndex, col, index, animate){
+    const fill = jarEls[jarIndex].querySelector('.fill');
+    const m = document.createElement('span');
+    m.className = 'mini' + (animate && !RM ? ' drop-in' : '');
+    m.style.setProperty('--c', col.c);
+    m.style.setProperty('--hi', col.hi);
+    m.style.setProperty('--lo', col.lo);
+    const [x, y] = slotPos(index);
+    m.style.left = x + '%';
+    m.style.bottom = y + '%';
+    fill.appendChild(m);
+  }
+  function sparkle(jar){
+    const glass = jar.querySelector('.glass');
+    for (let i = 0; i < 6; i++){
+      const s = document.createElement('span');
+      s.className = 'spark';
+      s.textContent = '✦';
+      s.style.left = (20 + Math.random() * 60) + '%';
+      s.style.top = (Math.random() * 40) + '%';
+      s.style.setProperty('--sx', (Math.random() * 50 - 25) + 'px');
+      s.style.setProperty('--sy', (-25 - Math.random() * 30) + 'px');
+      glass.appendChild(s);
+      setTimeout(() => s.remove(), 800);
+    }
+  }
+
+  /* ---------- stats ---------- */
+  function fmt(n){ return n.toLocaleString(); }
+  function renderStats(){
+    statsEl.innerHTML = '<b>' + fmt(state.sorted) + '</b> beads sorted &nbsp;&middot;&nbsp; <b>' +
+      fmt(state.shelved) + '</b> ' + (state.shelved === 1 ? 'jar' : 'jars') + ' shelved';
+  }
+  renderStats();
+  const TAKEBACK_HINT = 'tap a jar to take a bead back · hold to pour it all out';
+  if (state.hinted2) hintEl.classList.add('gone');
+  else if (state.hinted) hintEl.textContent = TAKEBACK_HINT;
+
+  /* ---------- beads ---------- */
+  let beadsLeft = 0;
+  let heldBead = null;
+
+  function makeBead(col, xPct, yPct, stagger, fall = true){
+    const b = document.createElement('button');
+    b.className = 'bead';
+    b.dataset.color = col.id;
+    b.setAttribute('aria-label', col.name + ' bead');
+    b.style.setProperty('--c', col.c);
+    b.style.setProperty('--hi', col.hi);
+    b.style.setProperty('--lo', col.lo);
+    b.style.left = xPct + '%';
+    b.style.top = yPct + '%';
+    if (!RM && fall){
+      b.classList.add('landing');
+      b.style.animationDelay = (stagger * 30) + 'ms';
+      b.addEventListener('animationend', () => b.classList.remove('landing'), { once:true });
+    }
+    attachDrag(b);
+    b.addEventListener('keydown', ev => {
+      if (ev.key === 'Enter' || ev.key === ' '){
+        ev.preventDefault();
+        setHeld(heldBead === b ? null : b);
+      }
+    });
+    tray.appendChild(b);
+    beadsLeft++;
+    return b;
+  }
+
+  function setHeld(b){
+    if (heldBead) heldBead.classList.remove('held');
+    heldBead = b;
+    if (b){
+      b.classList.add('held');
+      announce('Picked up ' + b.dataset.color + ' bead. Choose a jar.');
+    }
+  }
+
+  function scatterPositions(n){
+    const pts = [];
+    for (let i = 0; i < n; i++){
+      let best = null, bestD = -1;
+      for (let attempt = 0; attempt < 14; attempt++){
+        const x = 10 + Math.random() * 80;
+        const y = 14 + Math.random() * 74;
+        let d = Infinity;
+        for (const p of pts) d = Math.min(d, Math.hypot(p[0]-x, (p[1]-y)*0.6));
+        if (d > bestD){ bestD = d; best = [x, y]; }
+        if (d > 13) break;
+      }
+      pts.push(best);
+    }
+    return pts;
+  }
+
+  function pour(withSound){
+    centerStack.hidden = true;
+    clearedMsg.textContent = '';
+    const bag = [];
+    for (let i = 0; i < SCOOP; i++) bag.push(COLORS[i % COLORS.length]);
+    for (let i = bag.length - 1; i > 0; i--){
+      const j = Math.floor(Math.random() * (i + 1));
+      [bag[i], bag[j]] = [bag[j], bag[i]];
+    }
+    const pts = scatterPositions(bag.length);
+    bag.forEach((col, i) => makeBead(col, pts[i][0], pts[i][1], i));
+    if (withSound) pourSound();
+    announce('Poured ' + bag.length + ' beads onto the tray.');
+  }
+
+  /* ---------- drag & drop ---------- */
+  function attachDrag(bead){
+    let pid = null, sx = 0, sy = 0, tx = 0, ty = 0, cx = 0, cy = 0;
+    let dragging = false, raf = 0;
+
+    function loop(){
+      cx += (tx - cx) * 0.42;
+      cy += (ty - cy) * 0.42;
+      bead.style.transform = 'translate(' + cx + 'px,' + cy + 'px) scale(1.12)';
+      const jar = jarUnder();
+      jarEls.forEach(j => j.classList.toggle('hover', j === jar));
+      raf = requestAnimationFrame(loop);
+    }
+    function jarUnder(){
+      const r = bead.getBoundingClientRect();
+      const px = r.left + r.width / 2, py = r.top + r.height / 2;
+      for (const j of jarEls){
+        const jr = j.getBoundingClientRect();
+        if (px > jr.left - 8 && px < jr.right + 8 && py > jr.top - 14 && py < jr.bottom + 10)
+          return j;
+      }
+      return null;
+    }
+    bead.addEventListener('pointerdown', ev => {
+      if (pid !== null || bead.dataset.locked) return;
+      pid = ev.pointerId;
+      bead.setPointerCapture(pid);
+      sx = ev.clientX; sy = ev.clientY;
+      tx = ty = cx = cy = 0;
+      dragging = false;
+      ac(); // unlock audio on first gesture
+    });
+    bead.addEventListener('pointermove', ev => {
+      if (ev.pointerId !== pid) return;
+      const dx = ev.clientX - sx, dy = ev.clientY - sy;
+      if (!dragging && Math.hypot(dx, dy) > 6){
+        dragging = true;
+        bead.classList.add('drag');
+        if (heldBead) setHeld(null);
+        raf = requestAnimationFrame(loop);
+      }
+      tx = dx; ty = dy;
+    });
+    function finish(ev){
+      if (ev.pointerId !== pid) return;
+      pid = null;
+      cancelAnimationFrame(raf);
+      jarEls.forEach(j => j.classList.remove('hover'));
+      if (!dragging){
+        bead.style.transform = '';
+        setHeld(heldBead === bead ? null : bead);
+        return;
+      }
+      bead.classList.remove('drag');
+      const jar = jarUnder();
+      if (jar) attemptDrop(bead, jar, cx, cy);
+      else returnBead(bead, cx, cy);
+      dragging = false;
+    }
+    bead.addEventListener('pointerup', finish);
+    bead.addEventListener('pointercancel', finish);
+  }
+
+  function returnBead(bead, fromX, fromY){
+    if (RM){ bead.style.transform = ''; return; }
+    bead.dataset.locked = '1';
+    const anim = bead.animate(
+      [{ transform:'translate(' + fromX + 'px,' + fromY + 'px) scale(1.12)' },
+       { transform:'translate(0,0) scale(1)' }],
+      { duration:300, easing:'cubic-bezier(.3,1.4,.5,1)' });
+    anim.onfinish = () => { bead.style.transform = ''; delete bead.dataset.locked; };
+  }
+
+  function attemptDrop(bead, jar, fromX = 0, fromY = 0){
+    if (bead.dataset.locked) return;
+    const jarIndex = +jar.dataset.index;
+    const col = COLORS.find(c => c.id === bead.dataset.color);
+    if (jar.dataset.busy){ // mid-celebration; hand the bead back gently
+      if (heldBead === bead) setHeld(null);
+      returnBead(bead, fromX, fromY);
+      return;
+    }
+    if (heldBead === bead) setHeld(null);
+    bead.dataset.locked = '1';
+    const slotIndex = state.jars[jarIndex].length;
+    const fill = jar.querySelector('.fill');
+    const fr = fill.getBoundingClientRect();
+    const [sxPct, syPct] = slotPos(slotIndex);
+    const targetX = fr.left + fr.width * (sxPct / 100) + 6;
+    const targetY = fr.bottom - fr.height * (syPct / 100) - 6;
+    const br = bead.getBoundingClientRect();
+    const dx = targetX - (br.left + br.width / 2);
+    const dy = targetY - (br.top + br.height / 2);
+
+    tone(NOTES[jarIndex]);
+    logoDot.style.background =
+      'radial-gradient(circle at 32% 30%, ' + col.hi + ', ' + col.c + ' 55%, ' + col.lo + ')';
+
+    const settle = () => {
+      bead.remove();
+      addMini(jarIndex, col, slotIndex, true);
+      state.jars[jarIndex].push(col.id);
+      state.sorted++;
+      beadsLeft--;
+      if (!state.hinted){
+        state.hinted = true;
+        hintEl.classList.add('gone');
+        if (!state.hinted2) setTimeout(() => {
+          hintEl.textContent = TAKEBACK_HINT;
+          hintEl.classList.remove('gone');
+        }, 900);
+      }
+      jar.setAttribute('aria-label', jarLabel(jarIndex));
+      announce(col.name + ' bead in jar ' + (jarIndex + 1) + ': ' + state.jars[jarIndex].length + ' of ' + CAP);
+      renderStats();
+      save();
+      if (state.jars[jarIndex].length >= CAP) capJar(jarIndex);
+      if (beadsLeft === 0) trayCleared();
+    };
+    if (RM){ settle(); return; }
+    bead.style.zIndex = 200;
+    const anim = bead.animate(
+      [{ transform:'translate(' + fromX + 'px,' + fromY + 'px) scale(1.12)' },
+       { transform:'translate(' + (fromX + dx * 0.5) + 'px,' + (fromY + dy - 60) + 'px) scale(.9)', offset:.5 },
+       { transform:'translate(' + (fromX + dx) + 'px,' + (fromY + dy) + 'px) scale(.38)', opacity:.9 }],
+      { duration:430, easing:'cubic-bezier(.35,.6,.4,1)' });
+    anim.onfinish = settle;
+  }
+
+  function capJar(jarIndex){
+    const jar = jarEls[jarIndex];
+    jar.dataset.busy = '1';
+    jar.classList.add('capped', 'pop');
+    sparkle(jar);
+    arpeggio(NOTES[jarIndex]);
+    announce('Jar ' + (jarIndex + 1) + ' is full! Shelved.');
+    setTimeout(() => {
+      state.jars[jarIndex] = [];
+      state.shelved++;
+      jar.querySelector('.fill').innerHTML = '';
+      jar.classList.remove('capped', 'pop');
+      delete jar.dataset.busy;
+      jar.setAttribute('aria-label', jarLabel(jarIndex));
+      renderStats();
+      save();
+    }, RM ? 200 : 1100);
+  }
+
+  function pourBack(jarIndex, count){
+    const jar = jarEls[jarIndex];
+    if (jar.dataset.busy) return;
+    const contents = state.jars[jarIndex];
+    const n = Math.min(count, contents.length);
+    // tip even when empty — the motion says "nothing in here"
+    jar.classList.add(n > 1 ? 'tip' : 'tip-sm');
+    setTimeout(() => jar.classList.remove('tip', 'tip-sm'),
+      n > 1 ? 160 + n * 70 + 240 : 220);
+    if (n === 0) return;
+    jar.dataset.busy = '1';
+    const colors = [];
+    for (let k = 0; k < n; k++) colors.push(contents.pop());
+    const fill = jar.querySelector('.fill');
+    const pts = scatterPositions(n);
+    if (n > 1) pourSound();
+    colors.forEach((colorId, k) => {
+      const col = COLORS.find(c => c.id === colorId) || COLORS[0];
+      setTimeout(() => {
+        const minis = fill.querySelectorAll('.mini');
+        if (minis.length) minis[minis.length - 1].remove();
+        spawnFromJar(col, pts[k][0], pts[k][1], jar);
+        tone(NOTES[jarIndex] / 2, { vol: n > 1 ? 0.07 : 0.14, dur: 0.24 });
+      }, RM ? 0 : 120 + k * 70);
+    });
+    state.sorted = Math.max(0, state.sorted - n);
+    if (!state.hinted2){ state.hinted2 = true; hintEl.classList.add('gone'); }
+    centerStack.hidden = true;
+    clearedMsg.textContent = '';
+    jar.setAttribute('aria-label', jarLabel(jarIndex));
+    announce(n === 1
+      ? 'Took a ' + colors[0] + ' bead back from jar ' + (jarIndex + 1) + '.'
+      : 'Poured ' + n + ' beads from jar ' + (jarIndex + 1) + ' back onto the tray.');
+    renderStats();
+    save();
+    setTimeout(() => { delete jar.dataset.busy; }, RM ? 50 : 160 + n * 70 + 460);
+  }
+
+  function spawnFromJar(col, xPct, yPct, jar){
+    const b = makeBead(col, xPct, yPct, 0, false);
+    if (RM) return;
+    const br = b.getBoundingClientRect();
+    const gr = jar.querySelector('.glass').getBoundingClientRect();
+    const fx = gr.left + gr.width / 2 - (br.left + br.width / 2);
+    const fy = gr.top + gr.height / 2 - (br.top + br.height / 2);
+    b.dataset.locked = '1';
+    const anim = b.animate(
+      [{ transform:'translate(' + fx + 'px,' + fy + 'px) scale(.38)', opacity:.9 },
+       { transform:'translate(' + (fx * 0.5) + 'px,' + (fy - 55) + 'px) scale(.95)', offset:.5 },
+       { transform:'translate(0,0) scale(1)' }],
+      { duration:430, easing:'cubic-bezier(.35,.6,.4,1)' });
+    anim.onfinish = () => { b.style.transform = ''; delete b.dataset.locked; };
+  }
+
+  function trayCleared(){
+    clearChime();
+    clearedMsg.textContent = 'tray sorted ✦';
+    centerStack.hidden = false;
+    announce('Tray sorted. Pour another scoop when ready.');
+  }
+
+  function announce(msg){ sr.textContent = msg; }
+
+  pourBtn.addEventListener('click', () => pour(true));
+
+  soundBtn.addEventListener('click', () => {
+    state.sound = !state.sound;
+    soundBtn.setAttribute('aria-pressed', String(state.sound));
+    soundBtn.setAttribute('aria-label', state.sound ? 'Sound on' : 'Sound off');
+    soundBtn.innerHTML = '♫ ' + (state.sound ? 'on' : 'off');
+    save();
+    if (state.sound) tone(659.25, { vol:0.12, dur:0.2 });
+  });
+  soundBtn.setAttribute('aria-pressed', String(state.sound));
+  soundBtn.innerHTML = '♫ ' + (state.sound ? 'on' : 'off');
+  if (!state.sound) soundBtn.setAttribute('aria-label', 'Sound off');
+
+  pour(false); // first scoop is already waiting
+})();
+</script>
+</body>
+</html>
