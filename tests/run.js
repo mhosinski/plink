@@ -1,0 +1,103 @@
+#!/usr/bin/env node
+// Quality gates for plink. No dependencies; run with: node tests/run.js
+//
+// index.html is the single source file, so pure logic under test is
+// extracted from it by slicing between function-declaration markers and
+// eval'ing with stubs. If a marker function is renamed, update the
+// SLICES table below.
+
+const fs = require('fs');
+const path = require('path');
+
+const src = fs.readFileSync(path.join(__dirname, '..', 'index.html'), 'utf8');
+
+// Whole-script syntax check
+const js = src.match(/<script>([\s\S]*)<\/script>/)[1];
+new Function(js); // throws on syntax error
+
+const SLICES = {
+  scoop: ['function activeColorCount', 'function pour('],
+  evict: ['function evictIndex', 'function reflowMinis'],
+  clean: ['function hasCleanMove', 'function updatePourUI'],
+};
+function slice(name) {
+  const [from, to] = SLICES[name];
+  const a = src.indexOf(from), b = src.indexOf(to);
+  if (a < 0 || b < 0 || b <= a) throw new Error('marker not found for slice: ' + name);
+  return src.slice(a, b);
+}
+
+// ---- shared stubs matching the game's constants ----
+const COLORS = Array.from({ length: 10 }, (_, i) => ({ id: 'c' + i, name: 'c' + i }));
+const CAP = 12, JAR_COUNT = 5, TOTAL_CAP = 60, POUR_AT = 5;
+let state, trayBeads = [];
+const tray = { querySelectorAll: () => trayBeads.map(id => ({ dataset: { color: id } })) };
+
+eval(slice('scoop'));
+eval(slice('evict'));
+eval(slice('clean'));
+
+let failures = 0;
+function check(cond, label) {
+  console.log((cond ? 'ok   ' : 'FAIL ') + label);
+  if (!cond) failures++;
+}
+
+// ---- evictIndex: minority color leaves first, newest of that color ----
+state = null;
+check(evictIndex(['a', 'a', 'b', 'a']) === 2, 'evict: minority first');
+check(evictIndex(['a', 'a', 'a']) === 2, 'evict: single color = undo (newest)');
+check(evictIndex(['a', 'b', 'a', 'b']) === 3, 'evict: tie -> newest of tied');
+check(evictIndex(['b']) === 0, 'evict: lone bead');
+check(evictIndex(['a', 'b', 'b', 'c', 'b']) === 3, 'evict: two tied minorities -> newest');
+
+// ---- hasCleanMove: non-full jar, empty or uniformly the bead's color ----
+function cleanCase(jars, beads, want, label) {
+  state = { jars };
+  trayBeads = beads;
+  check(hasCleanMove() === want, 'clean: ' + label);
+}
+cleanCase([['x', 'x', 'x'], ['y', 'y', 'y'], ['z', 'z', 'z'], Array(10).fill('w'), Array(9).fill('v')],
+  ['a', 'a', 'a', 'b', 'b', 'b'], false, 'all jars claimed by other colors -> none');
+cleanCase([[], ['x']], ['a'], true, 'empty jar -> clean move');
+cleanCase([['a', 'a'], ['x']], ['a'], true, 'matching uniform jar -> clean move');
+cleanCase([Array(12).fill('a'), ['x']], ['a'], false, 'matching jar but full -> none');
+cleanCase([['a', 'x'], ['y']], ['a'], false, 'only mixed/other jars -> none');
+cleanCase([['x']], [], false, 'empty tray -> vacuously none needed');
+
+// ---- computeScoop: no-deadlock invariant, property-tested ----
+// After every pour: either everything in play fits in the jars (tray can
+// clear) or some color has CAP beads in play (a shelve is achievable).
+// null is allowed only when jars are full AND a shelvable color exists.
+let bad = 0;
+const TRIALS = 50000;
+for (let t = 0; t < TRIALS; t++) {
+  const level = 1 + Math.floor(Math.random() * 12);
+  const nColors = Math.min(3 + level, 10);
+  const jars = Array.from({ length: JAR_COUNT }, () => {
+    const n = Math.floor(Math.random() * 13);
+    return Array.from({ length: n }, () => 'c' + Math.floor(Math.random() * nColors));
+  });
+  trayBeads = Array.from({ length: Math.floor(Math.random() * (POUR_AT + 1)) },
+    () => 'c' + Math.floor(Math.random() * nColors));
+  state = { level, jars };
+  const counts = inPlayCounts();
+  const playTotal = Object.values(counts).reduce((a, b) => a + b, 0);
+  const room = TOTAL_CAP - playTotal;
+  const maxCount = Math.max(0, ...Object.values(counts));
+  const bag = computeScoop();
+  if (bag === null) {
+    if (!(room <= 0 && maxCount >= CAP)) bad++;
+    continue;
+  }
+  if (bag.length < 1) { bad++; continue; }
+  const after = { ...counts };
+  bag.forEach(id => after[id] = (after[id] || 0) + 1);
+  const clearable = playTotal + bag.length <= TOTAL_CAP;
+  const shelvable = Math.max(...Object.values(after)) >= CAP;
+  if (!clearable && !shelvable) bad++;
+}
+check(bad === 0, `scoop: no-deadlock invariant over ${TRIALS} random states (${bad} bad)`);
+
+console.log(failures ? `\n${failures} FAILURE(S)` : '\nall gates green');
+process.exit(failures ? 1 : 0);
