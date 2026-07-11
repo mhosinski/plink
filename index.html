@@ -385,13 +385,22 @@
   } catch(e){}
   if (!Array.isArray(state.jars) || state.jars.length !== JAR_COUNT)
     state.jars = Array.from({ length: JAR_COUNT }, () => []);
-  // Saves may hold colors retired from the palette; map them to kin.
+  // Saves are a public contract with real players: they may hold colors
+  // retired from the palette (map to kin) or ids this build has never
+  // heard of (a newer build's save meeting a stale cached page — coerce
+  // to a known color). State must only ever contain ids this build
+  // understands, or the scoop composer can deal beads pour() can't make.
   const RETIRED = { moss:'jade', cocoa:'clementine' };
-  state.jars = state.jars.map(jar => jar.map(id => RETIRED[id] || id));
+  const KNOWN_IDS = new Set(COLORS.map(c => c.id));
+  function normalizeColorId(id){
+    const mapped = RETIRED[id] || id;
+    return KNOWN_IDS.has(mapped) ? mapped : COLORS[0].id;
+  }
+  state.jars = state.jars.map(jar => jar.map(normalizeColorId));
   if (Array.isArray(state.tray))
-    state.tray.forEach(t => { t.id = RETIRED[t.id] || t.id; });
+    state.tray.forEach(t => { t.id = normalizeColorId(t.id); });
   if (Array.isArray(state.shelf))
-    state.shelf.forEach(s => { s.c = RETIRED[s.c] || s.c; });
+    state.shelf.forEach(s => { s.c = normalizeColorId(s.c); });
   if (!state.nextPerfect) state.nextPerfect = rollNextPerfect();
   if (!Array.isArray(state.shelf)) state.shelf = [];
   function syncTray(){
@@ -699,7 +708,7 @@
     clearedMsg.innerHTML = '';
     const pts = scatterPositions(bag.length);
     bag.forEach((id, i) => {
-      const col = COLORS.find(c => c.id === id);
+      const col = COLORS.find(c => c.id === id) || COLORS[0];
       makeBead(col, pts[i][0], pts[i][1], i);
     });
     if (withSound) pourSound();

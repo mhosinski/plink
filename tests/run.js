@@ -19,6 +19,7 @@ const SLICES = {
   scoop: ['function activeColorCount', 'function pour('],
   evict: ['function evictIndex', 'function reflowMinis'],
   clean: ['function hasCleanMove', 'function updatePourUI'],
+  migrate: ['const RETIRED', 'state.jars = state.jars.map'],
 };
 function slice(name) {
   const [from, to] = SLICES[name];
@@ -64,6 +65,20 @@ cleanCase([['a', 'a'], ['x']], ['a'], true, 'matching uniform jar -> clean move'
 cleanCase([Array(12).fill('a'), ['x']], ['a'], false, 'matching jar but full -> none');
 cleanCase([['a', 'x'], ['y']], ['a'], false, 'only mixed/other jars -> none');
 cleanCase([['x']], [], false, 'empty tray -> vacuously none needed');
+
+// ---- normalizeColorId: saves are a public contract ----
+// Evaluated in its own scope with the real palette ids, since the
+// normalizer's KNOWN_IDS derives from COLORS.
+const normalizeColorId = (function () {
+  const COLORS = ['cherry', 'jade', 'cornflower', 'honey', 'clementine'].map(id => ({ id }));
+  eval(slice('migrate'));
+  return normalizeColorId;
+})();
+check(normalizeColorId('moss') === 'jade', 'migrate: retired moss -> jade');
+check(normalizeColorId('cocoa') === 'clementine', 'migrate: retired cocoa -> clementine');
+check(normalizeColorId('jade') === 'jade', 'migrate: known id passes through');
+check(normalizeColorId('sage') === 'cherry', 'migrate: unknown future id coerced to a known color');
+check(normalizeColorId(undefined) === 'cherry', 'migrate: corrupt entry coerced, never crashes');
 
 // ---- computePerfectScoop: exact completion of every partial jar ----
 state = { level: 5, jars: [Array(7).fill('c0'), Array(4).fill('c1'), [], Array(11).fill('c0'), []] };

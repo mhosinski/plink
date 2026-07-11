@@ -198,8 +198,15 @@ Everything lives in `index.html`, in this order:
 - **`NOTES`** — one fixed pentatonic tone per jar (C5 D5 E5 G5 A5, left to
   right). Jars own notes; colors do not.
 - **State & persistence** — `localStorage` key `plink-v2`: counters, level,
-  jar contents, tray beads (with positions), hint flags. Schema changes must
-  migrate or default cleanly for existing saves (Mike's wife has one).
+  jar contents, tray beads (with positions), shelf history, hint flags.
+  **Saves are a public contract: plink has real players on devices we don't
+  control** (Mike's wife, her sister, their niece — and counting). Every
+  schema or palette change ships in the same commit as a load-time
+  migration plus a gates test. All color ids pass through
+  `normalizeColorId()` on load (retired ids map to kin via `RETIRED`;
+  unknown ids coerce to a known color) so state can never hold an id the
+  running build can't complete or pour — stale cached pages meeting newer
+  saves is a real scenario under Pages' ~10-minute cache.
 - **Audio** — all Web Audio-synthesized, no assets. iOS needs the
   `audioSession: 'playback'` opt-in and the silent-buffer unlock; keep both.
 - **Interaction** — pointer-event drag with lerp, tap-to-hold alternative,
