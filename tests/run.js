@@ -42,7 +42,7 @@ function slice(name) {
 
 // ---- shared stubs matching the game's constants ----
 const COLORS = Array.from({ length: 10 }, (_, i) => ({ id: 'c' + i, name: 'c' + i }));
-const CAP = 12, JAR_COUNT = 5, TOTAL_CAP = 60, POUR_AT = 5;
+const CAP = 12, JAR_COUNT = 5, TOTAL_CAP = 60, POUR_AT = 5, MIN_BREATH = 10;
 let state, trayBeads = [];
 const tray = { querySelectorAll: () => trayBeads.map(id => ({ dataset: { color: id } })) };
 
@@ -92,7 +92,8 @@ check(normalizeColorId('jade') === 'jade', 'migrate: known id passes through');
 check(normalizeColorId('sage') === 'cherry', 'migrate: unknown future id coerced to a known color');
 check(normalizeColorId(undefined) === 'cherry', 'migrate: corrupt entry coerced, never crashes');
 
-// ---- computePerfectScoop: exact completion of every partial jar ----
+// ---- computePerfectScoop: finish every color in play, leftovers too ----
+trayBeads = [];
 state = { level: 5, jars: [Array(7).fill('c0'), Array(4).fill('c1'), [], Array(11).fill('c0'), []] };
 const perfect = computePerfectScoop();
 const tally = {};
@@ -102,16 +103,38 @@ check(perfect && perfect.length === 14 && tally.c0 === 6 && tally.c1 === 8,
 state = { level: 5, jars: [['c0', 'c1'], []] };
 check(computePerfectScoop() === null, 'perfect: mixed jar -> not offered');
 state = { level: 5, jars: [[], [], [], [], []] };
-check(computePerfectScoop() === null, 'perfect: nothing partial -> not offered');
+check(computePerfectScoop() === null, 'perfect: nothing in play -> not offered');
 state = { level: 9, jars: Array.from({ length: 5 }, (_, i) => ['c' + i]) };
-check(computePerfectScoop() === null, 'perfect: need 55 beads > 36 cap -> not offered');
+check((computePerfectScoop() || []).length === 55, 'perfect: 55-bead grand spill allowed (one tray)');
+state = { level: 9, jars: Array.from({ length: 5 }, (_, i) => ['c' + i]) };
+trayBeads = ['c5'];
+check(computePerfectScoop() === null, 'perfect: need 66 > one full tray -> not offered');
+trayBeads = [];
 state = { level: 5, jars: [Array(11).fill('c2'), [], [], [], []] };
 check((computePerfectScoop() || []).length === 1, 'perfect: single finishing bead allowed');
-// invariant: a perfect bag always fits (total after = 12 x partial jars <= 60)
-state = { level: 9, jars: Array.from({ length: 5 }, (_, i) => Array(9).fill('c' + i)) };
-const big = computePerfectScoop();
-check(big && big.length === 15 && 45 + big.length <= TOTAL_CAP,
-  'perfect: five 9-bead jars -> 15-bead bag, fits capacity');
+// leftover-aware: held tray beads get their completing sets too
+state = { level: 9, jars: [Array(7).fill('c0'), [], [], [], []] };
+trayBeads = ['c5', 'c5', 'c5'];
+const withLeft = computePerfectScoop();
+const t2 = {};
+(withLeft || []).forEach(id => t2[id] = (t2[id] || 0) + 1);
+check(withLeft && t2.c0 === 5 && t2.c5 === 9, 'perfect: leftovers completed (c0 x5, c5 x9)');
+trayBeads = Array(12).fill('c5');
+check(JSON.stringify((computePerfectScoop() || []).sort()) === JSON.stringify(Array(5).fill('c0')),
+  'perfect: an exact dozen on the tray needs no beads of its own');
+// a color spread over two jars completes across both
+state = { level: 9, jars: [Array(7).fill('c0'), Array(4).fill('c0'), [], [], []] };
+trayBeads = ['c0', 'c0'];
+check((computePerfectScoop() || []).length === 11, 'perfect: two jars of one color -> 24 total (need 11)');
+// invariant: after any perfect bag, every color in play totals a multiple of CAP
+state = { level: 9, jars: [Array(9).fill('c1'), Array(6).fill('c3'), [], [], []] };
+trayBeads = ['c7', 'c7', 'c8'];
+const inv = computePerfectScoop();
+const totals = { c1: 9, c3: 6, c7: 2, c8: 1 };
+(inv || []).forEach(id => totals[id]++);
+check(inv && Object.values(totals).every(v => v % CAP === 0),
+  'perfect: every in-play color lands on a multiple of 12');
+trayBeads = [];
 
 // ---- backfillShelf: synthesized history for counter-only shelves ----
 const bf = backfillShelf(14, 8, 1234);

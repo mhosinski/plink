@@ -381,6 +381,7 @@
   const CAP = 12;
   const TOTAL_CAP = JAR_COUNT * CAP;
   const POUR_AT = 5; // leftovers allowed: pour is offered at or below this many tray beads
+  const MIN_BREATH = 10; // smallest real scoop, even when held leftovers crowd capacity
   const RM = matchMedia('(prefers-reduced-motion: reduce)').matches;
 
   const tray = document.getElementById('tray');
@@ -685,9 +686,13 @@
     let top = null, topCount = 0;
     for (const id in counts) if (counts[id] > topCount){ top = id; topCount = counts[id]; }
     const need = (top && topCount < CAP) ? CAP - topCount : 0;
-    let size = Math.min(scoopBase(), room);
+    // Breathe past capacity when held leftovers crowd it: always deal at
+    // least MIN_BREATH. Safe beyond room because the bag still tops the
+    // leading color to CAP (need > 0) or one already sits there
+    // (need == 0), so the shelve escape stays live either way.
+    if (room < 1 && need < 1) return null; // jars full & a set of 12 waits
+    let size = Math.min(scoopBase(), Math.max(room, MIN_BREATH));
     if (need > 0) size = Math.max(size, need);
-    if (size < 1) return null;
     const bag = [];
     if (need > 0) for (let k = 0; k < need; k++) bag.push(top);
     // Fill the remainder from a freshly shuffled pool, cycling if it runs
@@ -739,28 +744,45 @@
     return out;
   }
 
-  // A "finishing scoop": exactly the beads that top every partial jar up
-  // to CAP, so perfect sorting shelves everything — a clean slate. Only
-  // meaningful when every non-empty jar is uniform; the bag always fits
-  // (12 x partial jars <= TOTAL_CAP). Null when the moment isn't right.
+  // A "finishing scoop": exactly the beads that finish every color in
+  // play — completing every partial jar AND giving every held tray
+  // leftover a full set — so perfect sorting shelves everything: a clean
+  // slate. Every non-empty jar must be uniform. A color with more than a
+  // jar's worth in play completes across that many jars; that is always
+  // schedulable because each finished jar shelves and frees its seat.
+  // Invariant-safe by construction: after this pour every color in play
+  // totals a multiple of CAP, so a shelve is always live.
   function computePerfectScoop(){
-    const need = [];
+    const have = {}, jarsOf = {};
     for (const jar of state.jars){
       if (!jar.length) continue;
       if (!jar.every(id => id === jar[0])) return null;
-      for (let k = jar.length; k < CAP; k++) need.push(jar[0]);
+      have[jar[0]] = (have[jar[0]] || 0) + jar.length;
+      jarsOf[jar[0]] = (jarsOf[jar[0]] || 0) + 1;
     }
-    if (!need.length || need.length > 36) return null;
-    for (let i = need.length - 1; i > 0; i--){
+    tray.querySelectorAll('.bead').forEach(b => {
+      have[b.dataset.color] = (have[b.dataset.color] || 0) + 1;
+    });
+    const bag = [];
+    for (const c in have){
+      const jarsNeeded = Math.max(jarsOf[c] || 0, Math.ceil(have[c] / CAP));
+      for (let k = have[c]; k < jarsNeeded * CAP; k++) bag.push(c);
+    }
+    // Bounded by one full tray. Simulation note: steady-state "finish
+    // everything" needs cluster around 50-58 beads, so a lower cap makes
+    // finishing scoops near-mythical (~1 per 1000 pours at cap 40-56 vs
+    // ~1 per 10 at 60). The rare grand spill is the feature.
+    if (!bag.length || bag.length > TOTAL_CAP) return null;
+    for (let i = bag.length - 1; i > 0; i--){
       const j = Math.floor(Math.random() * (i + 1));
-      [need[i], need[j]] = [need[j], need[i]];
+      [bag[i], bag[j]] = [bag[j], bag[i]];
     }
-    return need;
+    return bag;
   }
 
   function pour(withSound){
     let bag = null, dealtPerfect = false;
-    if (beadsLeft === 0 && state.pourCount >= state.nextPerfect){
+    if (state.pourCount >= state.nextPerfect){ // docked leftover pours count too
       bag = computePerfectScoop();
       dealtPerfect = !!bag;
     }
