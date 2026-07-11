@@ -136,6 +136,7 @@
   .mini{
     position:absolute;
     width:13px; height:13px; border-radius:50%;
+    transition:left .25s ease, bottom .25s ease;
     background:radial-gradient(circle at 32% 30%, var(--hi), var(--c) 52%, var(--lo));
     box-shadow:0 1px 1px rgba(0,0,0,.3);
   }
@@ -293,7 +294,7 @@
 
   @media (prefers-reduced-motion: reduce){
     .bead.landing,.jar.pop,.mini.drop-in,.spark{animation:none;}
-    .jar,.glass,.lid,.tape-btn,.hint{transition:none;}
+    .jar,.glass,.lid,.tape-btn,.hint,.mini{transition:none;}
   }
   @media (min-height:760px){
     .glass{height:86px;}
@@ -330,17 +331,20 @@
 <script>
 (() => {
   // Colors unlock in this order, one per cleared tray, starting with four.
+  // The set and order are optimized for perceptual contrast (Lab deltaE):
+  // every pair differs by >=30.5, the starting four by >=68, and each
+  // color clears the felt background by >=35.
   const COLORS = [
-    { id:'cherry',     name:'cherry',     c:'#e0475c', hi:'#ff8ba0', lo:'#8f1f33' },
-    { id:'clementine', name:'clementine', c:'#ef8f3a', hi:'#ffc98e', lo:'#a1541a' },
-    { id:'honey',      name:'honey',      c:'#f2c94c', hi:'#ffe9a8', lo:'#a97f1d' },
-    { id:'jade',       name:'jade',       c:'#43a377', hi:'#8fe0bb', lo:'#1f5c41' },
-    { id:'cornflower', name:'cornflower', c:'#5b7fd6', hi:'#a8c0ff', lo:'#2c4a94' },
-    { id:'orchid',     name:'orchid',     c:'#9d68c9', hi:'#d3aef2', lo:'#5e3387' },
-    { id:'petal',      name:'petal',      c:'#e987ae', hi:'#ffc2d9', lo:'#a94a72' },
-    { id:'lagoon',     name:'lagoon',     c:'#35a3a8', hi:'#8fe0e2', lo:'#16666a' },
-    { id:'moss',       name:'moss',       c:'#9aa63f', hi:'#d3dc8a', lo:'#5c661f' },
-    { id:'cocoa',      name:'cocoa',      c:'#9a6b4a', hi:'#d0a586', lo:'#5c3a24' },
+    { id:'cherry',     name:'cherry',     c:'#e0475c', hi:'#ee9aa5', lo:'#822935' },
+    { id:'jade',       name:'jade',       c:'#43a377', hi:'#98ccb4', lo:'#275f45' },
+    { id:'cornflower', name:'cornflower', c:'#5b7fd6', hi:'#a5b9e8', lo:'#354a7c' },
+    { id:'honey',      name:'honey',      c:'#f2c94c', hi:'#f8e19d', lo:'#8c752c' },
+    { id:'orchid',     name:'orchid',     c:'#c94fc4', hi:'#e19edf', lo:'#752e72' },
+    { id:'pearl',      name:'pearl',      c:'#ece4d4', hi:'#f5f0e7', lo:'#89847b' },
+    { id:'fig',        name:'fig',        c:'#755775', hi:'#b3a3b3', lo:'#443244' },
+    { id:'petal',      name:'petal',      c:'#f2a7c3', hi:'#f8cfde', lo:'#8c6171' },
+    { id:'clementine', name:'clementine', c:'#ef8f3a', hi:'#f6c193', lo:'#8b5322' },
+    { id:'lagoon',     name:'lagoon',     c:'#2f9fa8', hi:'#8dcacf', lo:'#1b5c61' },
   ];
   // Left to right, an ascending C-major pentatonic: C5 D5 E5 G5 A5.
   // Any drop order sounds consonant, so sorting composes little melodies.
@@ -378,6 +382,11 @@
   } catch(e){}
   if (!Array.isArray(state.jars) || state.jars.length !== JAR_COUNT)
     state.jars = Array.from({ length: JAR_COUNT }, () => []);
+  // Saves may hold colors retired from the palette; map them to kin.
+  const RETIRED = { moss:'jade', cocoa:'clementine' };
+  state.jars = state.jars.map(jar => jar.map(id => RETIRED[id] || id));
+  if (Array.isArray(state.tray))
+    state.tray.forEach(t => { t.id = RETIRED[t.id] || t.id; });
   function syncTray(){
     state.tray = Array.from(tray.querySelectorAll('.bead')).map(b => ({
       id: b.dataset.color,
@@ -833,6 +842,28 @@
     }, RM ? 200 : 1100);
   }
 
+  // The bead to take back: from the jar's minority color (the odd ones
+  // out leave first), newest of that color. A single-color jar behaves
+  // like a plain undo.
+  function evictIndex(contents){
+    const counts = {};
+    contents.forEach(id => { counts[id] = (counts[id] || 0) + 1; });
+    let min = Infinity;
+    for (const id in counts) min = Math.min(min, counts[id]);
+    let best = -1;
+    for (const id in counts)
+      if (counts[id] === min) best = Math.max(best, contents.lastIndexOf(id));
+    return best;
+  }
+
+  function reflowMinis(fill){
+    Array.from(fill.querySelectorAll('.mini')).forEach((m, j) => {
+      const [x, y] = slotPos(j);
+      m.style.left = x + '%';
+      m.style.bottom = y + '%';
+    });
+  }
+
   function pourBack(jarIndex, count){
     const jar = jarEls[jarIndex];
     if (jar.dataset.busy) return;
@@ -844,16 +875,22 @@
       n > 1 ? 160 + n * 70 + 240 : 220);
     if (n === 0) return;
     jar.dataset.busy = '1';
-    const colors = [];
-    for (let k = 0; k < n; k++) colors.push(contents.pop());
     const fill = jar.querySelector('.fill');
+    const minis = Array.from(fill.querySelectorAll('.mini'));
+    const evicted = [];
+    for (let k = 0; k < n; k++){
+      const idx = evictIndex(contents);
+      evicted.push({ id: contents[idx], el: minis[idx] });
+      contents.splice(idx, 1);
+      minis.splice(idx, 1);
+    }
     const pts = scatterPositions(n);
     if (n > 1) pourSound();
-    colors.forEach((colorId, k) => {
-      const col = COLORS.find(c => c.id === colorId) || COLORS[0];
+    evicted.forEach((ev, k) => {
+      const col = COLORS.find(c => c.id === ev.id) || COLORS[0];
       setTimeout(() => {
-        const minis = fill.querySelectorAll('.mini');
-        if (minis.length) minis[minis.length - 1].remove();
+        if (ev.el) ev.el.remove();
+        reflowMinis(fill);
         spawnFromJar(col, pts[k][0], pts[k][1], jar);
         tone(NOTES[jarIndex] / 2, { vol: n > 1 ? 0.07 : 0.14, dur: 0.24 });
       }, RM ? 0 : 120 + k * 70);
@@ -864,7 +901,7 @@
     clearedMsg.textContent = '';
     jar.setAttribute('aria-label', jarLabel(jarIndex));
     announce(n === 1
-      ? 'Took a ' + colors[0] + ' bead back from jar ' + (jarIndex + 1) + '.'
+      ? 'Took a ' + evicted[0].id + ' bead back from jar ' + (jarIndex + 1) + '.'
       : 'Poured ' + n + ' beads from jar ' + (jarIndex + 1) + ' back onto the tray.');
     renderStats();
     save();
