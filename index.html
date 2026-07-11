@@ -244,10 +244,18 @@
   .center-stack[hidden]{display:none;}
   .cleared{
     font-size:15px; font-weight:700; letter-spacing:.06em;
+    line-height:1.6; text-align:center; max-width:78vw;
     color:var(--cream);
     text-shadow:0 1px 2px rgba(0,0,0,.4);
   }
   .cleared:empty{display:none;}
+  .dotc{
+    display:inline-block; width:13px; height:13px; border-radius:50%;
+    background:radial-gradient(circle at 32% 30%, var(--hi), var(--c) 55%, var(--lo));
+    vertical-align:-1px;
+    box-shadow:0 1px 2px rgba(0,0,0,.3);
+  }
+  .tape-btn[hidden]{display:none;}
   .tape-btn{
     font-family:var(--marker);
     font-size:21px;
@@ -319,19 +327,25 @@
 
 <script>
 (() => {
+  // Colors unlock in this order, one per cleared tray, starting with four.
   const COLORS = [
     { id:'cherry',     name:'cherry',     c:'#e0475c', hi:'#ff8ba0', lo:'#8f1f33' },
     { id:'clementine', name:'clementine', c:'#ef8f3a', hi:'#ffc98e', lo:'#a1541a' },
     { id:'honey',      name:'honey',      c:'#f2c94c', hi:'#ffe9a8', lo:'#a97f1d' },
     { id:'jade',       name:'jade',       c:'#43a377', hi:'#8fe0bb', lo:'#1f5c41' },
     { id:'cornflower', name:'cornflower', c:'#5b7fd6', hi:'#a8c0ff', lo:'#2c4a94' },
+    { id:'orchid',     name:'orchid',     c:'#9d68c9', hi:'#d3aef2', lo:'#5e3387' },
+    { id:'petal',      name:'petal',      c:'#e987ae', hi:'#ffc2d9', lo:'#a94a72' },
+    { id:'lagoon',     name:'lagoon',     c:'#35a3a8', hi:'#8fe0e2', lo:'#16666a' },
+    { id:'moss',       name:'moss',       c:'#9aa63f', hi:'#d3dc8a', lo:'#5c661f' },
+    { id:'cocoa',      name:'cocoa',      c:'#9a6b4a', hi:'#d0a586', lo:'#5c3a24' },
   ];
   // Left to right, an ascending C-major pentatonic: C5 D5 E5 G5 A5.
   // Any drop order sounds consonant, so sorting composes little melodies.
   const NOTES = [523.25, 587.33, 659.25, 783.99, 880.00];
   const JAR_COUNT = NOTES.length;
   const CAP = 12;
-  const SCOOP = 22;
+  const TOTAL_CAP = JAR_COUNT * CAP;
   const RM = matchMedia('(prefers-reduced-motion: reduce)').matches;
 
   const tray = document.getElementById('tray');
@@ -347,7 +361,7 @@
 
   /* ---------- state ---------- */
   const KEY = 'plink-v2';
-  let state = { sorted:0, shelved:0, sound:true, hinted:false, hinted2:false, jars:null };
+  let state = { sorted:0, shelved:0, level:1, sound:true, hinted:false, hinted2:false, hinted3:false, jars:null };
   try {
     const raw = localStorage.getItem(KEY);
     if (raw) state = Object.assign(state, JSON.parse(raw));
@@ -568,17 +582,53 @@
     return pts;
   }
 
-  function pour(withSound){
-    centerStack.hidden = true;
-    clearedMsg.textContent = '';
+  function activeColorCount(atLevel){
+    return Math.min(3 + atLevel, COLORS.length);
+  }
+  function scoopBase(){
+    return Math.min(16 + state.level * 2, 36);
+  }
+  function inPlayCounts(){
+    const counts = {};
+    state.jars.forEach(jar => jar.forEach(id => { counts[id] = (counts[id] || 0) + 1; }));
+    return counts;
+  }
+  // Builds the next scoop with a no-deadlock guarantee: after every pour,
+  // either everything in play fits in the jars (tray can clear), or at
+  // least one color has CAP beads in play (a shelve is achievable).
+  // Returns null only when the jars are full AND already hold a
+  // completable color — the player shelves to make room.
+  function computeScoop(){
+    const counts = inPlayCounts();
+    const jarTotal = Object.values(counts).reduce((a, b) => a + b, 0);
+    const room = TOTAL_CAP - jarTotal;
+    let top = null, topCount = 0;
+    for (const id in counts) if (counts[id] > topCount){ top = id; topCount = counts[id]; }
+    const need = (top && topCount < CAP) ? CAP - topCount : 0;
+    let size = Math.min(scoopBase(), room);
+    if (need > 0) size = Math.max(size, need);
+    if (size < 1) return null;
     const bag = [];
-    for (let i = 0; i < SCOOP; i++) bag.push(COLORS[i % COLORS.length]);
+    if (need > 0) for (let k = 0; k < need; k++) bag.push(top);
+    const pool = COLORS.slice(0, activeColorCount(state.level)).map(c => c.id);
+    while (bag.length < size) bag.push(pool[bag.length % pool.length]);
     for (let i = bag.length - 1; i > 0; i--){
       const j = Math.floor(Math.random() * (i + 1));
       [bag[i], bag[j]] = [bag[j], bag[i]];
     }
+    return bag;
+  }
+
+  function pour(withSound){
+    const bag = computeScoop();
+    if (!bag){ showPourUI(); return; }
+    centerStack.hidden = true;
+    clearedMsg.innerHTML = '';
     const pts = scatterPositions(bag.length);
-    bag.forEach((col, i) => makeBead(col, pts[i][0], pts[i][1], i));
+    bag.forEach((id, i) => {
+      const col = COLORS.find(c => c.id === id);
+      makeBead(col, pts[i][0], pts[i][1], i);
+    });
     if (withSound) pourSound();
     announce('Poured ' + bag.length + ' beads onto the tray.');
   }
@@ -639,11 +689,32 @@
       bead.classList.remove('drag');
       const jar = jarUnder();
       if (jar) attemptDrop(bead, jar, cx, cy);
-      else returnBead(bead, cx, cy);
+      else settleOnTray(bead);
       dragging = false;
     }
     bead.addEventListener('pointerup', finish);
     bead.addEventListener('pointercancel', finish);
+  }
+
+  // A bead dropped anywhere on the tray stays where it lands (free
+  // pre-sorting); it only nudges back inside if dropped past the edge.
+  function settleOnTray(bead){
+    const tr = tray.getBoundingClientRect();
+    const br = bead.getBoundingClientRect();
+    const xPct = ((br.left + br.width / 2 - tr.left) / tr.width) * 100;
+    const yPct = ((br.top + br.height / 2 - tr.top) / tr.height) * 100;
+    const clampedX = Math.min(95, Math.max(5, xPct));
+    const clampedY = Math.min(94, Math.max(6, yPct));
+    bead.style.left = clampedX + '%';
+    bead.style.top = clampedY + '%';
+    bead.style.transform = '';
+    if (RM) return;
+    const ddx = ((xPct - clampedX) / 100) * tr.width;
+    const ddy = ((yPct - clampedY) / 100) * tr.height;
+    bead.animate(
+      [{ transform:'translate(' + ddx + 'px,' + ddy + 'px) scale(1.12)' },
+       { transform:'translate(0,0) scale(1)' }],
+      { duration:200, easing:'cubic-bezier(.3,1.3,.5,1)' });
   }
 
   function returnBead(bead, fromX, fromY){
@@ -663,6 +734,13 @@
     if (jar.dataset.busy){ // mid-celebration; hand the bead back gently
       if (heldBead === bead) setHeld(null);
       returnBead(bead, fromX, fromY);
+      return;
+    }
+    if (state.jars[jarIndex].length >= CAP){ // physically full — no room
+      if (heldBead === bead) setHeld(null);
+      returnBead(bead, fromX, fromY);
+      tone(150, { vol:0.1, dur:0.12 });
+      announce('Jar ' + (jarIndex + 1) + ' is full.');
       return;
     }
     if (heldBead === bead) setHeld(null);
@@ -699,7 +777,11 @@
       announce(col.name + ' bead in jar ' + (jarIndex + 1) + ': ' + state.jars[jarIndex].length + ' of ' + CAP);
       renderStats();
       save();
-      if (state.jars[jarIndex].length >= CAP) capJar(jarIndex);
+      const contents = state.jars[jarIndex];
+      if (contents.length >= CAP){
+        if (contents.every(id => id === contents[0])) capJar(jarIndex);
+        else jarFullHint(jarIndex);
+      }
       if (beadsLeft === 0) trayCleared();
     };
     if (RM){ settle(); return; }
@@ -728,6 +810,7 @@
       jar.setAttribute('aria-label', jarLabel(jarIndex));
       renderStats();
       save();
+      if (beadsLeft === 0 && pourBtn.hidden) showPourUI('tray sorted ✦');
     }, RM ? 200 : 1100);
   }
 
@@ -785,11 +868,46 @@
     anim.onfinish = () => { b.style.transform = ''; delete b.dataset.locked; };
   }
 
+  function jarFullHint(jarIndex){
+    announce('Jar ' + (jarIndex + 1) + ' is full, but mixed. Jars shelve when all twelve beads match.');
+    if (state.hinted3) return;
+    state.hinted3 = true;
+    save();
+    hintEl.textContent = 'a jar shelves when all twelve beads match';
+    hintEl.classList.remove('gone');
+    setTimeout(() => hintEl.classList.add('gone'), 4500);
+  }
+
+  // Shows either the pour button or, when the jars are full, a nudge to
+  // shelve. computeScoop() guarantees one of the two is always actionable.
+  function showPourUI(message){
+    clearedMsg.innerHTML = message || '';
+    if (computeScoop()){
+      pourBtn.hidden = false;
+    } else {
+      pourBtn.hidden = true;
+      clearedMsg.innerHTML = (message ? message + '<br>' : '') +
+        'the jars are full — gather twelve of one color to shelve it';
+    }
+    centerStack.hidden = false;
+  }
+
   function trayCleared(){
     clearChime();
-    clearedMsg.textContent = 'tray sorted ✦';
-    centerStack.hidden = false;
-    announce('Tray sorted. Pour another scoop when ready.');
+    const before = activeColorCount(state.level);
+    state.level++;
+    const after = activeColorCount(state.level);
+    let msg = 'tray sorted ✦';
+    let said = 'Tray sorted. Pour another scoop when ready.';
+    if (after > before){
+      const col = COLORS[after - 1];
+      msg += '<br>a new color joins: <span class="dotc" style="--c:' + col.c +
+        ';--hi:' + col.hi + ';--lo:' + col.lo + '"></span> ' + col.name;
+      said = 'Tray sorted. A new color joins the next scoop: ' + col.name + '.';
+    }
+    save();
+    showPourUI(msg);
+    announce(said);
   }
 
   function announce(msg){ sr.textContent = msg; }

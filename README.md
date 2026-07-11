@@ -1,10 +1,14 @@
 # plink — a bead-sorting fidget
 
 A cozy, mobile-first bead-sorting toy. A scoop of pony beads spills onto a felt tray;
-drag each one into whichever jar you like. Every jar plays its own note on an ascending
-pentatonic scale (C–D–E–G–A, left to right), so sorting composes gentle little melodies.
-Fill a jar with 12 beads and it gets capped and shelved. No timer, no score pressure —
-progress (beads sorted, jars shelved, sound preference) persists in `localStorage`.
+drag them around to pre-sort, then into jars. Every jar plays its own note on an
+ascending pentatonic scale (C–D–E–G–A, left to right), so sorting composes gentle
+little melodies. A jar shelves when it holds 12 beads of a single color; mixed jars
+sit full until you pour some beads back. Each cleared tray brings a bigger scoop and,
+up to ten, a new bead color — with more colors than jars, you shelve to make room.
+Scoops are composed so the player can never deadlock: after every pour, either
+everything in play fits in the jars or some color has a full set of 12 available.
+No timer, no score pressure — progress persists in `localStorage`.
 
 ## Run it
 
