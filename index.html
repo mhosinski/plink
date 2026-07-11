@@ -369,7 +369,9 @@
   /* ---------- state ---------- */
   const KEY = 'plink-v2';
   let state = { sorted:0, shelved:0, slates:0, level:1, pourCount:0, nextPerfect:0,
-                sound:true, hinted:false, hinted2:false, hinted3:false, jars:null, tray:[] };
+                sound:true, hinted:false, hinted2:false, hinted3:false, jars:null, tray:[],
+                shelf:[] }; // one {c, t} per shelved jar, in finished order; jars
+                            // shelved before this existed live only in the counter
   try {
     const raw = localStorage.getItem(KEY);
     if (raw) state = Object.assign(state, JSON.parse(raw));
@@ -388,7 +390,10 @@
   state.jars = state.jars.map(jar => jar.map(id => RETIRED[id] || id));
   if (Array.isArray(state.tray))
     state.tray.forEach(t => { t.id = RETIRED[t.id] || t.id; });
+  if (Array.isArray(state.shelf))
+    state.shelf.forEach(s => { s.c = RETIRED[s.c] || s.c; });
   if (!state.nextPerfect) state.nextPerfect = rollNextPerfect();
+  if (!Array.isArray(state.shelf)) state.shelf = [];
   function syncTray(){
     state.tray = Array.from(tray.querySelectorAll('.bead')).map(b => ({
       id: b.dataset.color,
@@ -540,6 +545,11 @@
 
   /* ---------- stats ---------- */
   function fmt(n){ return n.toLocaleString(); }
+  function localDate(){
+    const d = new Date();
+    return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') +
+      '-' + String(d.getDate()).padStart(2, '0');
+  }
   function renderStats(){
     statsEl.innerHTML = '<b>' + fmt(state.sorted) + '</b> beads sorted &nbsp;&middot;&nbsp; <b>' +
       fmt(state.shelved) + '</b> ' + (state.shelved === 1 ? 'jar' : 'jars') + ' shelved' +
@@ -868,6 +878,8 @@
     arpeggio(NOTES[jarIndex]);
     announce('Jar ' + (jarIndex + 1) + ' is full! Shelved.');
     setTimeout(() => {
+      // jars only cap uniform, so [0] is the jar's color
+      state.shelf.push({ c: state.jars[jarIndex][0], t: localDate() });
       state.jars[jarIndex] = [];
       state.shelved++;
       jar.querySelector('.fill').innerHTML = '';
