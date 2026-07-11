@@ -364,12 +364,28 @@
   function save(){ try { localStorage.setItem(KEY, JSON.stringify(state)); } catch(e){} }
 
   /* ---------- audio ---------- */
+  // iOS: without this, Web Audio is silenced by the ring/silent switch.
+  try { if ('audioSession' in navigator) navigator.audioSession.type = 'playback'; } catch(e){}
   let ctx = null;
   function ac(){
     if (!ctx) ctx = new (window.AudioContext || window.webkitAudioContext)();
-    if (ctx.state === 'suspended') ctx.resume();
+    if (ctx.state !== 'running') ctx.resume();
     return ctx;
   }
+  // iOS unlocks audio only inside a user gesture; prime it with a silent
+  // buffer on the first touch/click anywhere.
+  function unlockAudio(){
+    const a = ac();
+    const src = a.createBufferSource();
+    src.buffer = a.createBuffer(1, 1, 22050);
+    src.connect(a.destination);
+    src.start(0);
+  }
+  document.addEventListener('pointerup', unlockAudio, { once:true });
+  document.addEventListener('touchend', unlockAudio, { once:true });
+  document.addEventListener('visibilitychange', () => {
+    if (!document.hidden && ctx && ctx.state !== 'running') ctx.resume();
+  });
   function tone(freq, { vol=0.22, dur=0.4, delay=0, type='triangle' } = {}){
     if (!state.sound) return;
     const a = ac(), t = a.currentTime + delay;
