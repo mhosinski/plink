@@ -117,6 +117,13 @@
   @keyframes pop{35%{transform:translateY(-7px) scale(1.1);}}
   .jar.tip-sm .glass{transform:rotate(-10deg);}
   .jar.tip .glass{transform:rotate(-24deg) translateY(-3px);}
+  .jar.jiggle .glass{animation:jiggle .9s ease;}
+  @keyframes jiggle{
+    15%{transform:rotate(-2.4deg);}
+    40%{transform:rotate(1.8deg);}
+    65%{transform:rotate(-1deg);}
+    85%{transform:rotate(.5deg);}
+  }
   .glass{
     position:relative;
     transition:transform .2s ease;
@@ -313,7 +320,7 @@
   }
 
   @media (prefers-reduced-motion: reduce){
-    .bead.landing,.jar.pop,.mini.drop-in,.spark{animation:none;}
+    .bead.landing,.jar.pop,.jar.jiggle .glass,.mini.drop-in,.spark{animation:none;}
     .jar,.glass,.lid,.tape-btn,.hint,.mini{transition:none;}
   }
   @media (min-height:760px){
@@ -1194,6 +1201,28 @@
   soundBtn.setAttribute('aria-pressed', String(state.sound));
   soundBtn.innerHTML = '♫ ' + (state.sound ? 'on' : 'off');
   if (!state.sound) soundBtn.setAttribute('aria-label', 'Sound off');
+
+  // A mixed jar occasionally gives a tiny wobble — a wordless nudge that
+  // it wants consolidating (take-back makes that easy, and mixed jars
+  // block clean slates). Gentle by design: one jar, about once a minute
+  // with jitter, silent, never mid-celebration, and a fresh mix gets a
+  // full quiet period before its first wobble.
+  const JIGGLE_MS = 50000;
+  let nextJiggle = Date.now() + JIGGLE_MS + Math.random() * 40000;
+  setInterval(() => {
+    if (RM || document.hidden) return;
+    const mixed = state.jars
+      .map((jar, i) => ({ jar, i }))
+      .filter(x => x.jar.length > 1 && !x.jar.every(id => id === x.jar[0]) &&
+                   !jarEls[x.i].dataset.busy);
+    if (!mixed.length){ nextJiggle = Date.now() + JIGGLE_MS; return; }
+    if (Date.now() < nextJiggle) return;
+    const jar = jarEls[mixed[Math.floor(Math.random() * mixed.length)].i];
+    jar.classList.remove('jiggle'); void jar.offsetWidth;
+    jar.classList.add('jiggle');
+    setTimeout(() => jar.classList.remove('jiggle'), 1000);
+    nextJiggle = Date.now() + JIGGLE_MS + Math.random() * 40000;
+  }, 5000);
 
   /* ---------- installable app & save backup ---------- */
   // Offline cache; an installed app is also exempt from Safari's 7-day
