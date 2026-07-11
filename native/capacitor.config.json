@@ -1,0 +1,13 @@
+{
+  "appId": "com.mhosinski.plink",
+  "appName": "plink",
+  "webDir": "www",
+  "backgroundColor": "#5c3d26",
+  "ios": {
+    "contentInset": "never",
+    "backgroundColor": "#5c3d26"
+  },
+  "android": {
+    "backgroundColor": "#5c3d26"
+  }
+}

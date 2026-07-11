@@ -1227,7 +1227,9 @@
   /* ---------- installable app & save backup ---------- */
   // Offline cache; an installed app is also exempt from Safari's 7-day
   // storage eviction, which is the whole point — real players live here.
-  if ('serviceWorker' in navigator)
+  // Skipped inside the Capacitor shell: assets are local there and
+  // service workers are flaky in native webviews.
+  if ('serviceWorker' in navigator && !window.Capacitor)
     navigator.serviceWorker.register('sw.js').catch(() => {});
   if (navigator.storage && navigator.storage.persist)
     navigator.storage.persist().catch(() => {});

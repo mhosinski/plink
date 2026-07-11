@@ -1,0 +1,17 @@
+{
+  "name": "plink-native",
+  "version": "1.0.0",
+  "scripts": {
+    "sync": "node sync.js && npx cap sync",
+    "ios": "node sync.js && npx cap sync ios && npx cap open ios",
+    "android": "node sync.js && npx cap sync android && npx cap open android"
+  },
+  "description": "Capacitor shells for plink",
+  "dependencies": {
+    "@capacitor/android": "^7.6.7",
+    "@capacitor/cli": "^7.6.7",
+    "@capacitor/core": "^7.6.7",
+    "@capacitor/ios": "^7.6.7"
+  },
+  "private": true
+}
