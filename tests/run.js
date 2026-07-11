@@ -128,6 +128,27 @@ const poolOK = bf.every((e, k) => {
 check(poolOK, 'backfill: colors respect the unlock curve at each point');
 check(backfillShelf(0, 8, 1).length === 0, 'backfill: nothing missing -> nothing seeded');
 
+// ---- computeScoop fairness: no color may starve in small-room play ----
+// The sister-in-law regime: jars + held leftovers keep in-play near
+// capacity, so scoops are tiny and the top-up consumes leading slots.
+// Every active color must still appear across repeated scoops. (The old
+// positional filler NEVER dealt fixed colors here.)
+{
+  trayBeads = [];
+  const seen = new Set();
+  for (let trial = 0; trial < 300; trial++) {
+    // 5 jars x 10 mixed beads -> every color count 10 (need=2), room 10
+    state = {
+      level: 9,
+      jars: Array.from({ length: 5 }, (_, j) =>
+        [0, 1, 2, 3, 4].flatMap(k => ['c' + ((j * 2) % 10), 'c' + ((j * 2 + 1) % 10)])),
+    };
+    (computeScoop() || []).forEach(id => seen.add(id));
+  }
+  check(seen.size === 10,
+    `fairness: all 10 colors dealt across small-room scoops (got ${seen.size})`);
+}
+
 // ---- computeScoop: no-deadlock invariant, property-tested ----
 // After every pour: either everything in play fits in the jars (tray can
 // clear) or some color has CAP beads in play (a shelve is achievable).

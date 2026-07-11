@@ -690,8 +690,17 @@
     if (size < 1) return null;
     const bag = [];
     if (need > 0) for (let k = 0; k < need; k++) bag.push(top);
+    // Fill the remainder from a freshly shuffled pool, cycling if it runs
+    // out, so every active color has equal odds in every scoop. (This was
+    // a positional round-robin whose start index equaled `need`; in
+    // small-room play — a tray full of held leftovers — short scoops
+    // never reached fixed positions, permanently starving those colors.)
     const pool = COLORS.slice(0, activeColorCount(state.level)).map(c => c.id);
-    while (bag.length < size) bag.push(pool[bag.length % pool.length]);
+    for (let i = pool.length - 1; i > 0; i--){
+      const j = Math.floor(Math.random() * (i + 1));
+      [pool[i], pool[j]] = [pool[j], pool[i]];
+    }
+    for (let k = 0; bag.length < size; k++) bag.push(pool[k % pool.length]);
     for (let i = bag.length - 1; i > 0; i--){
       const j = Math.floor(Math.random() * (i + 1));
       [bag[i], bag[j]] = [bag[j], bag[i]];
