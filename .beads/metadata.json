@@ -1,0 +1,7 @@
+{
+  "database": "dolt",
+  "backend": "dolt",
+  "dolt_mode": "embedded",
+  "dolt_database": "plink",
+  "project_id": "4fe29f98-869e-4372-91b2-baabe5a4e030"
+}
