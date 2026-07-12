@@ -532,19 +532,20 @@
   function tapSuccess(){
     if (HAPTICS) HAPTICS.notification({ type: 'SUCCESS' }).catch(() => {});
   }
-  // The cap thumps on, the jar slides across the shelf (grainy selection
-  // ticks under the arpeggio), and settles with a soft stop. Whole gesture
-  // ends by ~600ms, well before the 1100ms shelf swap.
+  // The cap thumps on, the jar slides across the shelf, and settles with
+  // a soft stop. The slide is selection ticks at 30ms — dense enough to
+  // fuse into one even zipper texture (55ms read as discrete bumps).
+  // Whole gesture ends by ~600ms, well before the 1100ms shelf swap.
   function tapShelve(){
     if (!HAPTICS) return;
     HAPTICS.impact({ style:'HEAVY' }).catch(() => {});
     HAPTICS.selectionStart().catch(() => {});
-    for (let i = 0; i < 6; i++)
-      setTimeout(() => HAPTICS.selectionChanged().catch(() => {}), 260 + i * 55);
+    for (let i = 0; i < 11; i++)
+      setTimeout(() => HAPTICS.selectionChanged().catch(() => {}), 260 + i * 30);
     setTimeout(() => {
       HAPTICS.selectionEnd().catch(() => {});
       HAPTICS.impact({ style:'LIGHT' }).catch(() => {});
-    }, 260 + 6 * 55);
+    }, 260 + 11 * 30);
   }
   // Beads raining onto the felt: impacts ride the 30ms landing stagger,
   // heavy at first contact, lighter through the tail — the tactile twin of
