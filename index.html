@@ -358,6 +358,7 @@
       <button class="tape-btn tape-sm" id="copySaveBtn">copy backup</button>
       <button class="tape-btn tape-sm" id="restoreSaveBtn">restore backup</button>
       <p class="backup-note" id="backupNote">your beads, jars, and shelf as text — paste it somewhere safe, or into another device</p>
+      <p class="backup-note" id="buildNote"></p>
     </div>
   </footer>
   <div class="sr" aria-live="polite" id="sr"></div>
@@ -365,6 +366,9 @@
 
 <script>
 (() => {
+  // The deploy timestamp of the exact copy being executed — correct even
+  // when served from the service worker cache. Answers "am I stale?"
+  console.log('plink · this copy deployed ' + document.lastModified);
   // Colors unlock in this order, one per cleared tray, starting with four.
   // The set and order are optimized for perceptual contrast (Lab deltaE):
   // every pair differs by >=30.5, the starting four by >=68, and each
@@ -1261,6 +1265,8 @@
     backupPanel.hidden = !backupPanel.hidden;
     statsEl.setAttribute('aria-expanded', String(!backupPanel.hidden));
     backupNote.textContent = NOTE_DEFAULT;
+    document.getElementById('buildNote').textContent =
+      'this copy deployed ' + document.lastModified;
   });
   document.getElementById('copySaveBtn').addEventListener('click', async () => {
     save();
