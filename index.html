@@ -978,11 +978,16 @@
     };
     if (RM){ settle(); return; }
     bead.style.zIndex = 200;
+    // Ease into the jar along a gentle, distance-scaled curve. (The old
+    // path aimed 60px above the jar at midflight regardless of distance,
+    // so beads released at the mouth hopped upward before dropping in.)
+    const dist = Math.hypot(dx, dy);
+    const lift = Math.min(36, dist * 0.22);
     const anim = bead.animate(
       [{ transform:'translate(' + fromX + 'px,' + fromY + 'px) scale(1.12)' },
-       { transform:'translate(' + (fromX + dx * 0.5) + 'px,' + (fromY + dy - 60) + 'px) scale(.9)', offset:.5 },
+       { transform:'translate(' + (fromX + dx * 0.5) + 'px,' + (fromY + dy * 0.5 - lift) + 'px) scale(.85)', offset:.55 },
        { transform:'translate(' + (fromX + dx) + 'px,' + (fromY + dy) + 'px) scale(.38)', opacity:.9 }],
-      { duration:430, easing:'cubic-bezier(.35,.6,.4,1)' });
+      { duration: Math.min(430, 240 + dist * 0.45), easing:'cubic-bezier(.35,.6,.4,1)' });
     anim.onfinish = settle;
   }
 
