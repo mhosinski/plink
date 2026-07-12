@@ -42,7 +42,7 @@ function slice(name) {
 
 // ---- shared stubs matching the game's constants ----
 const COLORS = Array.from({ length: 10 }, (_, i) => ({ id: 'c' + i, name: 'c' + i }));
-const CAP = 12, JAR_COUNT = 5, TOTAL_CAP = 60, POUR_AT = 5, MIN_BREATH = 10;
+const CAP = 12, JAR_COUNT = 5, TOTAL_CAP = 60, MIN_BREATH = 10;
 let state, trayBeads = [];
 const tray = { querySelectorAll: () => trayBeads.map(id => ({ dataset: { color: id } })) };
 
@@ -185,7 +185,9 @@ for (let t = 0; t < TRIALS; t++) {
     const n = Math.floor(Math.random() * 13);
     return Array.from({ length: n }, () => 'c' + Math.floor(Math.random() * nColors));
   });
-  trayBeads = Array.from({ length: Math.floor(Math.random() * (POUR_AT + 1)) },
+  // held leftovers are unbounded now that the pour offer is purely
+  // semantic — model up to a fat hoard
+  trayBeads = Array.from({ length: Math.floor(Math.random() * 16) },
     () => 'c' + Math.floor(Math.random() * nColors));
   state = { level, jars };
   const counts = inPlayCounts();

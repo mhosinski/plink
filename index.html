@@ -387,7 +387,6 @@
   const JAR_COUNT = NOTES.length;
   const CAP = 12;
   const TOTAL_CAP = JAR_COUNT * CAP;
-  const POUR_AT = 5; // leftovers allowed: pour is offered at or below this many tray beads
   const MIN_BREATH = 10; // smallest real scoop, even when held leftovers crowd capacity
   const RM = matchMedia('(prefers-reduced-motion: reduce)').matches;
 
@@ -1134,27 +1133,26 @@
     return false;
   }
 
-  // The player should never face a tray they can't act on: offer the
-  // next scoop when only a few beads remain, or whenever sorting on
-  // without dirtying a jar is impossible. If the jars are too full to
-  // pour, surface the shelve nudge instead (computeScoop() guarantees
-  // a shelve is achievable in that case).
+  // The player should never face a tray they can't act on — but while a
+  // clean move exists, the move IS the offer. The pour appears only when
+  // sorting on without dirtying a jar is impossible; anything more eager
+  // competes with the sorting itself (worst case: a tempting button in
+  // the middle of a finishing scoop's final beads, one reflexive tap
+  // from spoiling the clean slate). If the jars are too full to pour,
+  // the shelve nudge shows instead (computeScoop() guarantees a shelve
+  // is achievable in that case).
   function updatePourUI(){
     if (beadsLeft === 0) return; // trayCleared owns the full celebration
-    const stuck = beadsLeft <= POUR_AT || !hasCleanMove();
-    if (!stuck){ centerStack.hidden = true; return; }
+    if (hasCleanMove()){ centerStack.hidden = true; return; }
     centerStack.classList.add('docked');
     if (computeScoop()){
       clearedMsg.innerHTML = '';
       pourBtn.hidden = false;
-      centerStack.hidden = false;
-    } else if (!hasCleanMove()){
+    } else {
       clearedMsg.innerHTML = 'gather twelve of one color to shelve it';
       pourBtn.hidden = true;
-      centerStack.hidden = false;
-    } else {
-      centerStack.hidden = true;
     }
+    centerStack.hidden = false;
   }
 
   function trayCleared(){
