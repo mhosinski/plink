@@ -160,8 +160,12 @@
     background:rgba(20,10,5,.55);
     box-shadow:inset 0 1px 1px rgba(0,0,0,.5);
   }
-  .mini.drop-in{animation:mini-in .25s ease-out;}
-  @keyframes mini-in{from{transform:translateY(-26px); opacity:.6;} to{transform:none; opacity:1;}}
+  /* The flight animation IS the arrival — the mini must appear exactly
+     where the bead landed, so its entrance is a scale pop with zero
+     vertical motion (a translateY here re-falls the bead: reads as a
+     glitchy double-landing). */
+  .mini.drop-in{animation:mini-in .18s ease-out;}
+  @keyframes mini-in{from{transform:scale(.55); opacity:.7;} to{transform:none; opacity:1;}}
   .lid{
     position:absolute; left:-5px; right:-5px; top:-9px; height:13px;
     border-radius:6px;
