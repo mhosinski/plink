@@ -504,24 +504,25 @@
     o2.type = 'sine'; o2.frequency.value = freq * 2.01;
     o2.connect(g2); o2.start(t); o2.stop(t + dur);
   }
-  // One bead landing on felt: a tiny dry tick — a single grain of
-  // bandpassed noise, over in ~20ms. A bead weighs a few grams, so its
-  // sound lives up around 1-2kHz and the felt eats the tail instantly.
-  // Deliberately NO tonal body: a pitched knock is what made the first
-  // attempt sound heavy and wrong.
+  // One bead landing on felt: a tiny soft pat — a single grain of
+  // bandpassed noise. Deliberately NO tonal body (a pitched knock reads
+  // heavy), and no instant-peak attack either: felt compresses before it
+  // pushes back, so each grain ramps in over ~3ms — that ramp is the
+  // difference between "pat" and the ticky click of a hard transient.
   function feltTick(t, vel){
     const a = ac();
-    const dur = 0.008 + Math.random() * 0.02;
-    const len = Math.ceil(a.sampleRate * (dur + 0.005));
+    const dur = 0.012 + Math.random() * 0.025;
+    const len = Math.ceil(a.sampleRate * (dur + 0.008));
     const buf = a.createBuffer(1, len, a.sampleRate);
     const d = buf.getChannelData(0);
     for (let i = 0; i < len; i++) d[i] = Math.random() * 2 - 1;
     const src = a.createBufferSource(); src.buffer = buf;
     const bp = a.createBiquadFilter(); bp.type = 'bandpass';
-    bp.frequency.value = 1000 + Math.random() * 1200 + vel * 400;
-    bp.Q.value = 1.4;
+    bp.frequency.value = 600 + Math.random() * 700 + vel * 300;
+    bp.Q.value = 0.9;
     const g = a.createGain();
-    g.gain.setValueAtTime(0.02 + vel * 0.05, t);
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.linearRampToValueAtTime(0.02 + vel * 0.05, t + 0.003);
     g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
     src.connect(bp); bp.connect(g); g.connect(a.destination);
     src.start(t);
