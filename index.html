@@ -599,6 +599,10 @@
 
   /* ---------- jars ---------- */
   const jarEls = [];
+  // Beads mid-flight to a jar hold their slot before state.jars sees them;
+  // without this, two quick drops capture the same slot and the second
+  // mini renders hidden behind the first (and a jar can overfill past CAP).
+  const jarPending = [];
   const SLOT_JITTER = [];
   for (let i = 0; i < CAP; i++) SLOT_JITTER.push([Math.random()*6-3, Math.random()*4-2]);
   function slotPos(i){
@@ -890,6 +894,10 @@
   }
 
   /* ---------- drag & drop ---------- */
+  // One bead moves at a time. Two-finger scooping would reward speed, and
+  // plink doesn't. (isConnected check dissolves the lock if the locking
+  // bead ever leaves the DOM mid-gesture, so dragging can never brick.)
+  let dragLock = null;
   function attachDrag(bead){
     let pid = null, sx = 0, sy = 0, tx = 0, ty = 0, cx = 0, cy = 0;
     let dragging = false, raf = 0;
@@ -913,7 +921,9 @@
       return null;
     }
     bead.addEventListener('pointerdown', ev => {
-      if (pid !== null || bead.dataset.locked) return;
+      if (pid !== null || bead.dataset.locked ||
+          (dragLock && dragLock !== bead && dragLock.isConnected)) return;
+      dragLock = bead;
       pid = ev.pointerId;
       bead.setPointerCapture(pid);
       sx = ev.clientX; sy = ev.clientY;
@@ -935,6 +945,7 @@
     function finish(ev){
       if (ev.pointerId !== pid) return;
       pid = null;
+      if (dragLock === bead) dragLock = null;
       cancelAnimationFrame(raf);
       jarEls.forEach(j => j.classList.remove('hover'));
       if (!dragging){
@@ -993,7 +1004,8 @@
       returnBead(bead, fromX, fromY);
       return;
     }
-    if (state.jars[jarIndex].length >= CAP){ // physically full — no room
+    const pending = jarPending[jarIndex] || 0;
+    if (state.jars[jarIndex].length + pending >= CAP){ // physically full — no room
       if (heldBead === bead) setHeld(null);
       returnBead(bead, fromX, fromY);
       tone(150, { vol:0.1, dur:0.12 });
@@ -1002,7 +1014,8 @@
     }
     if (heldBead === bead) setHeld(null);
     bead.dataset.locked = '1';
-    const slotIndex = state.jars[jarIndex].length;
+    const slotIndex = state.jars[jarIndex].length + pending;
+    jarPending[jarIndex] = pending + 1;
     const fill = jar.querySelector('.fill');
     const fr = fill.getBoundingClientRect();
     const [sxPct, syPct] = slotPos(slotIndex);
@@ -1018,6 +1031,7 @@
       'radial-gradient(circle at 32% 30%, ' + col.hi + ', ' + col.c + ' 55%, ' + col.lo + ')';
 
     const settle = () => {
+      jarPending[jarIndex]--;
       bead.remove();
       addMini(jarIndex, col, slotIndex, true);
       state.jars[jarIndex].push(col.id);
