@@ -504,49 +504,41 @@
     o2.type = 'sine'; o2.frequency.value = freq * 2.01;
     o2.connect(g2); o2.start(t); o2.stop(t + dur);
   }
-  // One bead landing on felt: a soft damped thump — a low knock with a
-  // fast pitch drop plus a breath of lowpassed noise. Felt has no ring,
-  // so this is deliberately a different timbre from the glass plink, not
-  // a lower-pitched one. vel 0..1 scales weight into loudness, brightness
-  // and pitch so a cascade reads as many different beads.
-  function feltThump(t, vel){
+  // One bead landing on felt: a tiny dry tick — a single grain of
+  // bandpassed noise, over in ~20ms. A bead weighs a few grams, so its
+  // sound lives up around 1-2kHz and the felt eats the tail instantly.
+  // Deliberately NO tonal body: a pitched knock is what made the first
+  // attempt sound heavy and wrong.
+  function feltTick(t, vel){
     const a = ac();
-    const o = a.createOscillator();
-    o.type = 'sine';
-    const f0 = 150 + vel * 90 + Math.random() * 30;
-    o.frequency.setValueAtTime(f0, t);
-    o.frequency.exponentialRampToValueAtTime(f0 * 0.45, t + 0.06);
-    const g = a.createGain();
-    g.gain.setValueAtTime(0.0001, t);
-    g.gain.exponentialRampToValueAtTime(0.05 + vel * 0.09, t + 0.004);
-    g.gain.exponentialRampToValueAtTime(0.0001, t + 0.07 + vel * 0.05);
-    o.connect(g); g.connect(a.destination);
-    o.start(t); o.stop(t + 0.16);
-    const len = Math.floor(a.sampleRate * 0.03);
+    const dur = 0.008 + Math.random() * 0.02;
+    const len = Math.ceil(a.sampleRate * (dur + 0.005));
     const buf = a.createBuffer(1, len, a.sampleRate);
     const d = buf.getChannelData(0);
-    for (let i = 0; i < len; i++) d[i] = (Math.random() * 2 - 1) * (1 - i / len);
+    for (let i = 0; i < len; i++) d[i] = Math.random() * 2 - 1;
     const src = a.createBufferSource(); src.buffer = buf;
-    const lp = a.createBiquadFilter(); lp.type = 'lowpass';
-    lp.frequency.value = 500 + vel * 700;
-    const ng = a.createGain(); ng.gain.value = 0.04 + vel * 0.05;
-    src.connect(lp); lp.connect(ng); ng.connect(a.destination);
+    const bp = a.createBiquadFilter(); bp.type = 'bandpass';
+    bp.frequency.value = 1000 + Math.random() * 1200 + vel * 400;
+    bp.Q.value = 1.4;
+    const g = a.createGain();
+    g.gain.setValueAtTime(0.02 + vel * 0.05, t);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    src.connect(bp); bp.connect(g); g.connect(a.destination);
     src.start(t);
   }
-  // Pouring n beads: a loose, non-uniform cascade of felt thumps —
-  // heavier hits up front, stragglers trailing off, timing jittered so no
-  // two pours sound alike. Starts after the ~180ms fall and rides the
-  // 30ms landing stagger, the audible twin of tapCascade.
+  // Pouring n beads: a light patter — grains bunched where the spill is
+  // thickest, thinning to stragglers. Every grain's time, pitch and level
+  // is random, so nothing repeats evenly enough to read as a rhythm and
+  // no two pours sound alike.
   function pourSound(n){
     if (!state.sound) return;
     const a = ac(), t0 = a.currentTime + 0.18;
-    const hits = Math.min(n, 16);
-    const span = Math.max(0.25, n * 0.03);
-    for (let i = 0; i < hits; i++){
-      const frac = i / hits;
-      const t = t0 + frac * span + Math.random() * 0.05;
-      const vel = Math.max(0.15, 1 - frac * 0.7) * (0.6 + Math.random() * 0.4);
-      feltThump(t, vel);
+    const grains = Math.min(4 + n, 26);
+    const span = Math.max(0.3, n * 0.03);
+    for (let i = 0; i < grains; i++){
+      const frac = Math.pow(Math.random(), 1.6); // dense early, sparse tail
+      feltTick(t0 + frac * span + Math.random() * 0.04,
+               Math.random() * (1 - frac * 0.5));
     }
   }
   // Haptics exist only inside the native shell (iOS web has no vibration
@@ -581,7 +573,7 @@
   }
   // Beads raining onto the felt: impacts ride the 30ms landing stagger,
   // heavy at first contact, lighter through the tail — the tactile twin of
-  // pourSound's felt-thump cascade. Sampled so a grand spill stretches
+  // pourSound's felt patter. Sampled so a grand spill stretches
   // the rhythm out instead of flooding the native bridge.
   function tapCascade(n){
     if (!HAPTICS || n < 1) return;
@@ -1147,8 +1139,10 @@
         if (ev.el) ev.el.remove();
         reflowMinis(fill);
         spawnFromJar(col, pts[k][0], pts[k][1], jar);
-        tone(NOTES[jarIndex] / 2, { vol: n > 1 ? 0.07 : 0.14, dur: 0.24 });
-        if (n > 1) tap('LIGHT'); // pour-back is a gentler spill; feel follows
+        // single take-back keeps its low echo; a multi-bead pour lets the
+        // felt patter speak alone (two voices at once sounded like a bug)
+        if (n === 1) tone(NOTES[jarIndex] / 2, { vol: 0.14, dur: 0.24 });
+        else tap('LIGHT'); // pour-back is a gentler spill; feel follows
       }, RM ? 0 : 120 + k * 70);
     });
     state.sorted = Math.max(0, state.sorted - n);
