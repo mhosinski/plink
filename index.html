@@ -512,6 +512,20 @@
     src.connect(f); f.connect(g); g.connect(a.destination);
     src.start(t);
   }
+  // Haptics exist only inside the native shell (iOS web has no vibration
+  // API). Kept subtle and physical, mirroring the sounds: a light tap
+  // when a bead settles, a firmer one when a jar caps, a success pattern
+  // on a clean slate. Never for refusals — feel follows the no-judgment
+  // rule too.
+  const HAPTICS = window.Capacitor && window.Capacitor.Plugins &&
+    window.Capacitor.Plugins.Haptics;
+  function tap(style){
+    if (HAPTICS) HAPTICS.impact({ style }).catch(() => {});
+  }
+  function tapSuccess(){
+    if (HAPTICS) HAPTICS.notification({ type: 'SUCCESS' }).catch(() => {});
+  }
+
   function arpeggio(base){
     [1, 1.125, 1.25, 1.5, 2].forEach((r, i) => tone(base * r, { delay: i * 0.085, vol: 0.16, dur: 0.5 }));
   }
@@ -933,6 +947,7 @@
     const dy = targetY - (br.top + br.height / 2);
 
     tone(NOTES[jarIndex]);
+    tap('LIGHT');
     logoDot.style.background =
       'radial-gradient(circle at 32% 30%, ' + col.hi + ', ' + col.c + ' 55%, ' + col.lo + ')';
 
@@ -978,6 +993,7 @@
     jar.classList.add('capped', 'pop');
     sparkle(jar);
     arpeggio(NOTES[jarIndex]);
+    tap('MEDIUM');
     announce('Jar ' + (jarIndex + 1) + ' is full! Shelved.');
     setTimeout(() => {
       // jars only cap uniform, so [0] is the jar's color
@@ -1171,6 +1187,7 @@
     renderStats();
     save();
     slateFanfare();
+    tapSuccess();
     if (!RM) jarEls.forEach((jar, i) => setTimeout(() => {
       jar.classList.remove('pop'); void jar.offsetWidth;
       jar.classList.add('pop');
