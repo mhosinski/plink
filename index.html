@@ -521,9 +521,9 @@
   }
   // Haptics exist only inside the native shell (iOS web has no vibration
   // API). Kept subtle and physical, mirroring the sounds: a light tap
-  // when a bead settles, a firmer one when a jar caps, a success pattern
-  // on a clean slate. Never for refusals — feel follows the no-judgment
-  // rule too.
+  // when a bead settles, a cap-thump-and-shelf-slide when a jar shelves,
+  // a cascade when a scoop pours, a success pattern on a clean slate.
+  // Never for refusals — feel follows the no-judgment rule too.
   const HAPTICS = window.Capacitor && window.Capacitor.Plugins &&
     window.Capacitor.Plugins.Haptics;
   function tap(style){
@@ -531,6 +531,32 @@
   }
   function tapSuccess(){
     if (HAPTICS) HAPTICS.notification({ type: 'SUCCESS' }).catch(() => {});
+  }
+  // The cap thumps on, the jar slides across the shelf (grainy selection
+  // ticks under the arpeggio), and settles with a soft stop. Whole gesture
+  // ends by ~600ms, well before the 1100ms shelf swap.
+  function tapShelve(){
+    if (!HAPTICS) return;
+    HAPTICS.impact({ style:'HEAVY' }).catch(() => {});
+    HAPTICS.selectionStart().catch(() => {});
+    for (let i = 0; i < 6; i++)
+      setTimeout(() => HAPTICS.selectionChanged().catch(() => {}), 260 + i * 55);
+    setTimeout(() => {
+      HAPTICS.selectionEnd().catch(() => {});
+      HAPTICS.impact({ style:'LIGHT' }).catch(() => {});
+    }, 260 + 6 * 55);
+  }
+  // Beads raining onto the felt: impacts ride the 30ms landing stagger,
+  // heavy at first contact, lighter through the tail — the tactile twin of
+  // pourSound's decaying noise burst. Sampled so a grand spill stretches
+  // the rhythm out instead of flooding the native bridge.
+  function tapCascade(n){
+    if (!HAPTICS || n < 1) return;
+    const step = Math.max(1, Math.ceil(n / 16));
+    for (let i = 0; i < n; i += step){
+      const style = i === 0 ? 'HEAVY' : (i < n * 0.4 ? 'MEDIUM' : 'LIGHT');
+      setTimeout(() => HAPTICS.impact({ style }).catch(() => {}), 180 + i * 30);
+    }
   }
 
   function arpeggio(base){
@@ -825,7 +851,7 @@
       const col = COLORS.find(c => c.id === id) || COLORS[0];
       makeBead(col, pts[i][0], pts[i][1], i);
     });
-    if (withSound) pourSound();
+    if (withSound){ pourSound(); tapCascade(bag.length); }
     save();
     announce('Poured ' + bag.length + ' beads onto the tray.');
   }
@@ -1005,7 +1031,7 @@
     jar.classList.add('capped', 'pop');
     sparkle(jar);
     arpeggio(NOTES[jarIndex]);
-    tap('MEDIUM');
+    tapShelve();
     announce('Jar ' + (jarIndex + 1) + ' is full! Shelved.');
     setTimeout(() => {
       // jars only cap uniform, so [0] is the jar's color
@@ -1075,6 +1101,7 @@
         reflowMinis(fill);
         spawnFromJar(col, pts[k][0], pts[k][1], jar);
         tone(NOTES[jarIndex] / 2, { vol: n > 1 ? 0.07 : 0.14, dur: 0.24 });
+        if (n > 1) tap('LIGHT'); // pour-back is a gentler spill; feel follows
       }, RM ? 0 : 120 + k * 70);
     });
     state.sorted = Math.max(0, state.sorted - n);
