@@ -295,6 +295,40 @@
   .tape-btn:hover{transform:rotate(-2deg) scale(1.05);}
   .tape-btn:active{transform:rotate(-1deg) scale(.97);}
 
+  /* ---------- the bead bag ---------- */
+  .bag{
+    position:absolute; top:8px; right:10px; z-index:15;
+    width:62px; height:58px;
+    border:0; padding:0; background:none; cursor:pointer;
+    -webkit-tap-highlight-color:transparent;
+  }
+  .bag .sack{
+    display:block; width:100%; height:100%;
+    background:
+      radial-gradient(60% 45% at 32% 30%, rgba(255,240,215,.22), transparent 60%),
+      radial-gradient(110% 120% at 50% 115%, rgba(0,0,0,.32), transparent 55%),
+      linear-gradient(160deg, #b98d58, #96703f 70%, #7d5a30);
+    border-radius:46% 54% 58% 42% / 26% 30% 74% 70%;
+    box-shadow:0 4px 8px rgba(0,0,0,.35), inset 0 -4px 8px rgba(0,0,0,.18);
+    transform-origin:50% 85%;
+    transition:transform .15s;
+  }
+  .bag .tie{
+    position:absolute; left:50%; top:6px;
+    transform:translateX(-50%) rotate(-3deg);
+    width:32px; height:7px; border-radius:4px;
+    background:linear-gradient(180deg, #6b4a26, #59391b);
+    box-shadow:0 1px 2px rgba(0,0,0,.3);
+  }
+  .bag:hover .sack{transform:scale(1.05);}
+  .bag:active .sack{transform:scale(.94);}
+  .bag.tip .sack{animation:bagtip .7s ease;}
+  @keyframes bagtip{
+    22%{transform:rotate(-24deg) translateY(3px);}
+    55%{transform:rotate(-12deg);}
+    100%{transform:rotate(0);}
+  }
+
   /* ---------- footer ---------- */
   .statsbar{display:flex; flex-direction:column; align-items:center;}
   .stats{
@@ -326,7 +360,7 @@
   }
 
   @media (prefers-reduced-motion: reduce){
-    .bead.landing,.jar.pop,.jar.jiggle .glass,.mini.drop-in,.spark{animation:none;}
+    .bead.landing,.jar.pop,.jar.jiggle .glass,.mini.drop-in,.spark,.bag.tip .sack{animation:none;}
     .jar,.glass,.lid,.tape-btn,.hint,.mini{transition:none;}
   }
   @media (min-height:760px){
@@ -354,6 +388,9 @@
         <p class="cleared" id="clearedMsg"></p>
         <button class="tape-btn" id="pourBtn">pour a scoop</button>
       </div>
+      <button class="bag" id="bag"
+        aria-label="Bead bag. Hold, or press enter, to pour a scoop onto the tray."
+        ><span class="sack"><span class="tie"></span></span></button>
     </div>
   </section>
 
@@ -407,6 +444,7 @@
   const centerStack = document.getElementById('centerStack');
   const clearedMsg = document.getElementById('clearedMsg');
   const pourBtn = document.getElementById('pourBtn');
+  const bagEl = document.getElementById('bag');
   const soundBtn = document.getElementById('soundBtn');
   const logoDot = document.getElementById('logoDot');
   const sr = document.getElementById('sr');
@@ -734,8 +772,9 @@
     for (let i = 0; i < n; i++){
       let best = null, bestD = -1;
       for (let attempt = 0; attempt < 14; attempt++){
-        const x = 10 + Math.random() * 80;
+        let x = 10 + Math.random() * 80;
         const y = 14 + Math.random() * 74;
+        if (x > 78 && y < 28) x -= 16; // the bead bag rests in that corner
         let d = Infinity;
         for (const p of pts) d = Math.min(d, Math.hypot(p[0]-x, (p[1]-y)*0.6));
         if (d > bestD){ bestD = d; best = [x, y]; }
@@ -1195,15 +1234,12 @@
 
   // Shows either the pour button or, when the jars are full, a nudge to
   // shelve. computeScoop() guarantees one of the two is always actionable.
-  // The tray makes room for the pour offer: any free bead beneath it
-  // slides sideways just clear, like nudging beads aside to read a note.
-  // A bead the player can see but never grab would break the
-  // never-stuck-in-feel rule; horizontal escape always exists because
-  // the offer is centered and much narrower than the tray.
-  function clearOfferZone(){
-    if (centerStack.hidden) return;
-    const cr = centerStack.getBoundingClientRect();
-    const tr = tray.getBoundingClientRect();
+  // The tray makes room for what rests on it (the pour offer, the bead
+  // bag): any free bead beneath slides sideways just clear, like nudging
+  // beads aside to read a note. A bead the player can see but never grab
+  // would break the never-stuck-in-feel rule.
+  function nudgeFrom(el, tr){
+    const cr = el.getBoundingClientRect();
     let moved = false;
     tray.querySelectorAll('.bead').forEach(b => {
       if (b.dataset.locked || b === dragLock) return;
@@ -1211,10 +1247,19 @@
       const bx = br.left + br.width / 2, by = br.top + br.height / 2;
       if (bx < cr.left - 6 || bx > cr.right + 6 ||
           by < cr.top - 6 || by > cr.bottom + 6) return;
-      const nx = bx < cr.left + cr.width / 2
-        ? cr.left - 6 - br.width / 2
-        : cr.right + 6 + br.width / 2;
-      const xPct = Math.min(95, Math.max(5, ((nx - tr.left) / tr.width) * 100));
+      // try both sides, clamped to the tray; keep one that truly escapes
+      // (near a tray edge the clamp can push a candidate back under)
+      const toPct = px => Math.min(95, Math.max(5, ((px - tr.left) / tr.width) * 100));
+      const escapes = pct => {
+        const px = tr.left + (pct / 100) * tr.width;
+        return px < cr.left - 5 || px > cr.right + 5;
+      };
+      const leftPct = toPct(cr.left - 6 - br.width / 2);
+      const rightPct = toPct(cr.right + 6 + br.width / 2);
+      let xPct;
+      if (escapes(leftPct) && escapes(rightPct))
+        xPct = bx < cr.left + cr.width / 2 ? leftPct : rightPct;
+      else xPct = escapes(leftPct) ? leftPct : rightPct;
       const ox = ((parseFloat(b.style.left) - xPct) / 100) * tr.width;
       b.style.left = xPct + '%';
       moved = true;
@@ -1222,6 +1267,12 @@
         [{ transform:'translate(' + ox + 'px,0)' }, { transform:'translate(0,0)' }],
         { duration:260, easing:'cubic-bezier(.3,1.2,.5,1)' });
     });
+    return moved;
+  }
+  function clearOfferZone(){
+    const tr = tray.getBoundingClientRect();
+    let moved = nudgeFrom(bagEl, tr);
+    if (!centerStack.hidden) moved = nudgeFrom(centerStack, tr) || moved;
     if (moved) save();
   }
 
@@ -1326,6 +1377,44 @@
 
   pourBtn.addEventListener('click', () => pour(true));
 
+  /* ---------- the bead bag: more beads are always on the table ---------- */
+  // Holding it pours a scoop even while clean moves exist, so hoarding a
+  // color never blocks play. The center offer keeps its own quieter logic:
+  // that is the signpost, this is the standing invitation.
+  function bagTip(){
+    if (!RM){
+      bagEl.classList.remove('tip'); void bagEl.offsetWidth;
+      bagEl.classList.add('tip');
+    }
+    pour(true); // when the room is too full the shelve nudge shows instead
+  }
+  {
+    let bagTimer = 0, bagFired = false, bagHintTimer = 0;
+    const bagCancel = () => clearTimeout(bagTimer);
+    bagEl.addEventListener('pointerdown', () => {
+      bagFired = false;
+      bagTimer = setTimeout(() => { bagFired = true; bagTip(); }, HOLD_MS);
+      ac();
+    });
+    bagEl.addEventListener('pointerup', bagCancel);
+    bagEl.addEventListener('pointerleave', bagCancel);
+    bagEl.addEventListener('pointercancel', bagCancel);
+    bagEl.addEventListener('click', () => {
+      if (bagFired){ bagFired = false; return; }
+      if (!state.hinted || !state.hinted2) return; // intro hints own the line
+      hintEl.textContent = 'hold the bag to pour a scoop';
+      hintEl.classList.remove('gone');
+      clearTimeout(bagHintTimer);
+      bagHintTimer = setTimeout(() => hintEl.classList.add('gone'), 2600);
+    });
+    bagEl.addEventListener('keydown', ev => {
+      if (ev.key === 'Enter' || ev.key === ' '){
+        ev.preventDefault();
+        bagTip();
+      }
+    });
+  }
+
   soundBtn.addEventListener('click', () => {
     state.sound = !state.sound;
     soundBtn.setAttribute('aria-pressed', String(state.sound));
@@ -1428,6 +1517,7 @@
       makeBead(col, t.x, t.y, i);
     });
     updatePourUI();
+    clearOfferZone(); // saves that predate the bag may park beads under it
   } else {
     // A save captured mid-celebration can hold a full uniform jar whose
     // cap never landed; finish those before offering the next scoop.
