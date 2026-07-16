@@ -259,16 +259,22 @@
     z-index:20;
     display:flex; flex-direction:column; align-items:center; gap:14px;
     transition:opacity .4s;
-    pointer-events:none; /* only the button blocks touches, never the text */
+    pointer-events:none; /* only ever text now — never blocks a bead */
   }
-  .center-stack .tape-btn{pointer-events:auto;}
   .center-stack[hidden]{display:none;}
-  .center-stack.docked{top:auto; bottom:20px; transform:translateX(-50%);}
+  .pour-bar{display:flex; justify-content:center; padding:12px 0 4px;}
   .cleared{
     font-size:15px; font-weight:700; letter-spacing:.06em;
     line-height:1.6; text-align:center; max-width:78vw;
     color:var(--cream);
     text-shadow:0 1px 2px rgba(0,0,0,.4);
+    /* legible over a full hoard: a soft felt-toned scrim behind the text */
+    background:rgba(37,59,52,.85);
+    padding:10px 20px;
+    border-radius:16px;
+    box-shadow:0 2px 10px rgba(0,0,0,.28);
+    -webkit-backdrop-filter:blur(3px);
+    backdrop-filter:blur(3px);
   }
   .cleared:empty{display:none;}
   .dotc{
@@ -352,10 +358,13 @@
       <p class="hint" id="hint">drag beads into jars &mdash; every jar plays its own note</p>
       <div class="center-stack" id="centerStack" hidden>
         <p class="cleared" id="clearedMsg"></p>
-        <button class="tape-btn" id="pourBtn">pour a scoop</button>
       </div>
     </div>
   </section>
+
+  <div class="pour-bar">
+    <button class="tape-btn" id="pourBtn">pour a scoop</button>
+  </div>
 
   <footer class="statsbar">
     <button class="stats" id="stats" aria-expanded="false" aria-controls="backupPanel"
@@ -397,6 +406,12 @@
   const JAR_COUNT = NOTES.length;
   const CAP = 12;
   const TOTAL_CAP = JAR_COUNT * CAP;
+  // The room holds more than the jars do: hoarding is real play, and the
+  // grandest version — staging every jar one bead shy of a single color,
+  // then capping them in a parade — needs the hoarded color's 60 plus a
+  // full tray's worth of everything else still in flight. TOTAL_CAP
+  // stays the perfect-scoop bound (grand-spill rarity is tuned to it).
+  const ROOM_CAP = TOTAL_CAP * 2;
   const MIN_BREATH = 10; // smallest real scoop, even when held leftovers crowd capacity
   const RM = matchMedia('(prefers-reduced-motion: reduce)').matches;
 
@@ -768,7 +783,7 @@
   function computeScoop(){
     const counts = inPlayCounts();
     const jarTotal = Object.values(counts).reduce((a, b) => a + b, 0);
-    const room = TOTAL_CAP - jarTotal;
+    const room = ROOM_CAP - jarTotal;
     let top = null, topCount = 0;
     for (const id in counts) if (counts[id] > topCount){ top = id; topCount = counts[id]; }
     const need = (top && topCount < CAP) ? CAP - topCount : 0;
@@ -868,7 +883,7 @@
 
   function pour(withSound){
     let bag = null, dealtPerfect = false;
-    if (state.pourCount >= state.nextPerfect){ // docked leftover pours count too
+    if (state.pourCount >= state.nextPerfect){ // pours onto held leftovers count too
       bag = computePerfectScoop();
       dealtPerfect = !!bag;
     }
@@ -951,7 +966,7 @@
       bead.classList.remove('drag');
       const jar = jarUnder();
       if (jar) attemptDrop(bead, jar, cx, cy);
-      else { settleOnTray(bead); clearOfferZone(); }
+      else settleOnTray(bead);
       dragging = false;
     }
     bead.addEventListener('pointerup', finish);
@@ -1089,7 +1104,7 @@
       renderStats();
       save();
       if (state.jars.every(j => j.length === 0) && beadsLeft === 0) celebrateSlate();
-      else if (beadsLeft === 0 && pourBtn.hidden) showPourUI('tray sorted ✦');
+      else if (beadsLeft === 0 && centerStack.hidden) showPourUI('tray sorted ✦');
       else if (beadsLeft > 0) updatePourUI(); // a freed jar may change the offer
     }, RM ? 200 : 1100);
   }
@@ -1193,50 +1208,18 @@
     setTimeout(() => hintEl.classList.add('gone'), 4500);
   }
 
-  // Shows either the pour button or, when the jars are full, a nudge to
-  // shelve. computeScoop() guarantees one of the two is always actionable.
-  // The tray makes room for the pour offer: any free bead beneath it
-  // slides sideways just clear, like nudging beads aside to read a note.
-  // A bead the player can see but never grab would break the
-  // never-stuck-in-feel rule; horizontal escape always exists because
-  // the offer is centered and much narrower than the tray.
-  function clearOfferZone(){
-    if (centerStack.hidden) return;
-    const cr = centerStack.getBoundingClientRect();
-    const tr = tray.getBoundingClientRect();
-    let moved = false;
-    tray.querySelectorAll('.bead').forEach(b => {
-      if (b.dataset.locked || b === dragLock) return;
-      const br = b.getBoundingClientRect();
-      const bx = br.left + br.width / 2, by = br.top + br.height / 2;
-      if (bx < cr.left - 6 || bx > cr.right + 6 ||
-          by < cr.top - 6 || by > cr.bottom + 6) return;
-      const nx = bx < cr.left + cr.width / 2
-        ? cr.left - 6 - br.width / 2
-        : cr.right + 6 + br.width / 2;
-      const xPct = Math.min(95, Math.max(5, ((nx - tr.left) / tr.width) * 100));
-      const ox = ((parseFloat(b.style.left) - xPct) / 100) * tr.width;
-      b.style.left = xPct + '%';
-      moved = true;
-      if (!RM) b.animate(
-        [{ transform:'translate(' + ox + 'px,0)' }, { transform:'translate(0,0)' }],
-        { duration:260, easing:'cubic-bezier(.3,1.2,.5,1)' });
-    });
-    if (moved) save();
-  }
+  // Whenever the composer refuses, a dozen of one color is provably in
+  // play (gate-tested: the wall always holds a shelvable set), so a jar
+  // can always be finished — the copy names the action, not the math.
+  const WALL_MSG = 'the tray is full for now · finish a jar to make room';
 
+  // Center-of-felt text only: celebrations, and the wall when the room
+  // is over capacity. The pour button itself lives outside the tray now.
   function showPourUI(message){
-    centerStack.classList.remove('docked');
     clearedMsg.innerHTML = message || '';
-    if (computeScoop()){
-      pourBtn.hidden = false;
-    } else {
-      pourBtn.hidden = true;
-      clearedMsg.innerHTML = (message ? message + '<br>' : '') +
-        'the jars are full — gather twelve of one color to shelve it';
-    }
-    centerStack.hidden = false;
-    clearOfferZone();
+    if (!computeScoop())
+      clearedMsg.innerHTML = (message ? message + '<br>' : '') + WALL_MSG;
+    centerStack.hidden = !clearedMsg.innerHTML;
   }
 
   // A clean move exists when some tray bead fits a non-full jar that is
@@ -1250,30 +1233,22 @@
     return false;
   }
 
-  // The player should never face a tray they can't act on — but while a
-  // clean move exists, the move IS the offer. The pour appears only when
-  // sorting on without dirtying a jar is impossible; anything more eager
-  // competes with the sorting itself (worst case: a tempting button in
-  // the middle of a finishing scoop's final beads, one reflexive tap
-  // from spoiling the clean slate). If the jars are too full to pour,
-  // the shelve nudge shows instead (computeScoop() guarantees a shelve
-  // is achievable in that case).
+  // The pour button sits outside the tray and is never withheld: the bag
+  // on a real craft table is always in reach, and that standing freedom
+  // is what lets a player hoard a color instead of being made to spend
+  // it (plink-igv). It lives off the felt so it can't cover a bead and
+  // never tempts from the middle of a finishing pass. The felt's center
+  // carries only text, and only when it is true: the wall message when
+  // the room is over capacity and no clean move remains.
   function updatePourUI(){
     if (beadsLeft === 0) return; // trayCleared owns the full celebration
     // a capping jar is about to free up, and capJar re-runs this when it
-    // lands — don't flash an offer that's about to be retracted
+    // lands — don't flash a wall that's about to open
     if (jarEls.some(j => j.classList.contains('capped'))) return;
-    if (hasCleanMove()){ centerStack.hidden = true; return; }
-    centerStack.classList.add('docked');
-    if (computeScoop()){
-      clearedMsg.innerHTML = '';
-      pourBtn.hidden = false;
-    } else {
-      clearedMsg.innerHTML = 'gather twelve of one color to shelve it';
-      pourBtn.hidden = true;
-    }
-    centerStack.hidden = false;
-    clearOfferZone();
+    if (!hasCleanMove() && !computeScoop()){
+      clearedMsg.innerHTML = WALL_MSG;
+      centerStack.hidden = false;
+    } else centerStack.hidden = true;
   }
 
   function trayCleared(){

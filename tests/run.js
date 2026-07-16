@@ -42,7 +42,7 @@ function slice(name) {
 
 // ---- shared stubs matching the game's constants ----
 const COLORS = Array.from({ length: 10 }, (_, i) => ({ id: 'c' + i, name: 'c' + i }));
-const CAP = 12, JAR_COUNT = 5, TOTAL_CAP = 60, MIN_BREATH = 10;
+const CAP = 12, JAR_COUNT = 5, TOTAL_CAP = 60, ROOM_CAP = 120, MIN_BREATH = 10;
 let state, trayBeads = [];
 const tray = { querySelectorAll: () => trayBeads.map(id => ({ dataset: { color: id } })) };
 
@@ -185,15 +185,15 @@ for (let t = 0; t < TRIALS; t++) {
     const n = Math.floor(Math.random() * 13);
     return Array.from({ length: n }, () => 'c' + Math.floor(Math.random() * nColors));
   });
-  // held leftovers are unbounded now that the pour offer is purely
-  // semantic — model everything up to a full standing-pour hoard, past
-  // capacity, so the null/wall states are exercised from hoard-heavy rooms
-  trayBeads = Array.from({ length: Math.floor(Math.random() * 72) },
+  // held leftovers are unbounded now that the pour is a standing button —
+  // model everything up to a full hoard past room capacity, so the
+  // null/wall states are exercised from hoard-heavy rooms
+  trayBeads = Array.from({ length: Math.floor(Math.random() * (ROOM_CAP + 12)) },
     () => 'c' + Math.floor(Math.random() * nColors));
   state = { level, jars };
   const counts = inPlayCounts();
   const playTotal = Object.values(counts).reduce((a, b) => a + b, 0);
-  const room = TOTAL_CAP - playTotal;
+  const room = ROOM_CAP - playTotal;
   const maxCount = Math.max(0, ...Object.values(counts));
   const bag = computeScoop();
   if (bag === null) {
@@ -217,7 +217,7 @@ check(bad === 0, `scoop: no-deadlock invariant over ${TRIALS} random states (${b
 // again. (Shelving is modeled as removing CAP beads of the color: a jar
 // is always freeable via pour-back, which has no capacity check.)
 {
-  const CEILING = TOTAL_CAP + Math.max(MIN_BREATH, CAP - 1);
+  const CEILING = ROOM_CAP + Math.max(MIN_BREATH, CAP - 1);
   let overshoot = 0, badWall = 0, wedged = 0, walls = 0;
   for (let trial = 0; trial < 400; trial++) {
     state = { level: 1 + Math.floor(Math.random() * 12),
