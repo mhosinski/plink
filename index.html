@@ -799,9 +799,9 @@
     m.style.bottom = y + '%';
     fill.appendChild(m);
   }
-  function sparkle(jar){
+  function sparkle(jar, count = 6){
     const glass = jar.querySelector('.glass');
-    for (let i = 0; i < 6; i++){
+    for (let i = 0; i < count; i++){
       const s = document.createElement('span');
       s.className = 'spark';
       s.textContent = '✦';
@@ -895,6 +895,16 @@
   }
   function colorOf(id){ return String(id).split('~')[0]; }
   function shapeOf(id){ return String(id).split('~')[1] || 'round'; }
+  const BUTTONS_MATCH_BONUS = 2; // extra for a silhouette-matched jar (tunable)
+  // A full jar whose twelve beads all share a purchased silhouette earns
+  // a little extra — quietly, never announced as a number (plink-37v.2).
+  // Round is the default, not an achievement: all-round jars earn no bonus.
+  function matchBonus(contents){
+    if (!contents.length) return 0;
+    const s = shapeOf(contents[0]);
+    if (s === 'round') return 0;
+    return contents.every(id => shapeOf(id) === s) ? BUTTONS_MATCH_BONUS : 0;
+  }
   function scoopBase(){
     return Math.min(16 + state.level * 2, 36);
   }
@@ -1224,9 +1234,10 @@
 
   function capJar(jarIndex){
     const jar = jarEls[jarIndex];
+    const bonus = matchBonus(state.jars[jarIndex]);
     jar.dataset.busy = '1';
     jar.classList.add('capped', 'pop');
-    sparkle(jar);
+    sparkle(jar, bonus ? 14 : 6); // a matched jar celebrates harder, wordlessly
     arpeggio(NOTES[jarIndex]);
     tapShelve();
     announce('Jar ' + (jarIndex + 1) + ' is full! Shelved.');
@@ -1239,7 +1250,7 @@
       state.shelf.push({ c: matched ? jarBeads[0] : colorOf(jarBeads[0]), t: localDate() });
       state.jars[jarIndex] = [];
       state.shelved++;
-      state.buttons += BUTTONS_PER_JAR; // silent — the balance lives at the catalog
+      state.buttons += BUTTONS_PER_JAR + bonus; // silent — the balance lives at the catalog
       jar.querySelector('.fill').innerHTML = '';
       jar.classList.remove('capped', 'pop');
       delete jar.dataset.busy;

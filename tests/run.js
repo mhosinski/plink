@@ -111,6 +111,13 @@ check(seedButtons({ buttons: 0, shelved: 67 }) === 0, 'buttons: a spent-to-zero 
 check(seedButtons({ buttons: -5, shelved: 2 }) === 2, 'buttons: corrupt balance re-seeds from counters');
 check(seedButtons({ buttons: 2.7 }) === 2, 'buttons: fractional balance floors');
 
+// ---- matchBonus: silhouette-matched jars earn quietly ----
+check(matchBonus(Array(12).fill('c0')) === 0, 'bonus: all-round jar earns nothing (round is the default)');
+check(matchBonus(Array(12).fill('c0~star')) === 2, 'bonus: twelve matching stars earn the bonus');
+check(matchBonus([...Array(11).fill('c0~star'), 'c0']) === 0, 'bonus: one round bead breaks the match');
+check(matchBonus([...Array(6).fill('c0~star'), ...Array(6).fill('c0~heart')]) === 0, 'bonus: mixed silhouettes earn nothing');
+check(matchBonus([]) === 0, 'bonus: empty jar earns nothing');
+
 // ---- computePerfectScoop: finish every color in play, leftovers too ----
 trayBeads = [];
 state = { level: 5, jars: [Array(7).fill('c0'), Array(4).fill('c1'), [], Array(11).fill('c0'), []] };
