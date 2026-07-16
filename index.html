@@ -539,8 +539,10 @@
   const KEY = 'plink-v2';
   let state = { sorted:0, shelved:0, slates:0, level:1, pourCount:0, nextPerfect:0,
                 sound:true, hinted:false, hinted2:false, hinted3:false, jars:null, tray:[],
-                shelf:[] }; // one {c, t} per shelved jar, in finished order; jars
+                shelf:[],   // one {c, t} per shelved jar, in finished order; jars
                             // shelved before this existed live only in the counter
+                buttons:null, // craft currency; null = not yet seeded (plink-lr8)
+                owned:[] };   // purchased shape unlocks
   try {
     const raw = localStorage.getItem(KEY);
     if (raw) state = Object.assign(state, JSON.parse(raw));
@@ -571,11 +573,23 @@
     const color = KNOWN_IDS.has(mapped) ? mapped : COLORS[0].id;
     return SHAPES.has(parts[1]) ? color + '~' + parts[1] : color;
   }
+  const BUTTONS_PER_JAR = 1, BUTTONS_PER_SLATE = 10;
+  // Buttons arrived long after her first jars: a save without a balance
+  // is seeded once from its own counters, so existing players open the
+  // catalog already wealthy from work done for its own sake (plink-lr8).
+  // A corrupt balance re-seeds the same way — the counters are the truth.
+  function seedButtons(s){
+    return (typeof s.buttons === 'number' && isFinite(s.buttons) && s.buttons >= 0)
+      ? Math.floor(s.buttons)
+      : (s.shelved || 0) * BUTTONS_PER_JAR + (s.slates || 0) * BUTTONS_PER_SLATE;
+  }
   state.jars = state.jars.map(jar => jar.map(normalizeColorId));
   if (Array.isArray(state.tray))
     state.tray.forEach(t => { t.id = normalizeColorId(t.id); });
   if (Array.isArray(state.shelf))
     state.shelf.forEach(s => { s.c = normalizeColorId(s.c); });
+  state.buttons = seedButtons(state);
+  state.owned = (Array.isArray(state.owned) ? state.owned : []).filter(s => SHAPES.has(s));
   if (!state.nextPerfect) state.nextPerfect = rollNextPerfect();
   if (!Array.isArray(state.shelf)) state.shelf = [];
   if (state.shelved > state.shelf.length)
@@ -1225,6 +1239,7 @@
       state.shelf.push({ c: matched ? jarBeads[0] : colorOf(jarBeads[0]), t: localDate() });
       state.jars[jarIndex] = [];
       state.shelved++;
+      state.buttons += BUTTONS_PER_JAR; // silent — the balance lives at the catalog
       jar.querySelector('.fill').innerHTML = '';
       jar.classList.remove('capped', 'pop');
       delete jar.dataset.busy;
@@ -1403,6 +1418,7 @@
 
   function celebrateSlate(){
     state.slates++;
+    state.buttons += BUTTONS_PER_SLATE; // silent, like the per-jar button
     const extra = pendingSlateExtra || '';
     pendingSlateExtra = null;
     renderStats();

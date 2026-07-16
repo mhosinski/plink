@@ -88,10 +88,10 @@ cleanCase([['a', 'a~star'], ['x']], ['a~heart'], true, 'shaped bead fits its col
 // ---- normalizeColorId: saves are a public contract ----
 // Evaluated in its own scope with the real palette ids, since the
 // normalizer's KNOWN_IDS derives from COLORS.
-const normalizeColorId = (function () {
+const { normalizeColorId, seedButtons } = (function () {
   const COLORS = ['cherry', 'jade', 'cornflower', 'honey', 'clementine'].map(id => ({ id }));
   eval(slice('migrate'));
-  return normalizeColorId;
+  return { normalizeColorId, seedButtons };
 })();
 check(normalizeColorId('moss') === 'jade', 'migrate: retired moss -> jade');
 check(normalizeColorId('cocoa') === 'clementine', 'migrate: retired cocoa -> clementine');
@@ -102,6 +102,14 @@ check(normalizeColorId('jade~star') === 'jade~star', 'migrate: composite id pass
 check(normalizeColorId('moss~heart') === 'jade~heart', 'migrate: retired color keeps its shape');
 check(normalizeColorId('jade~blob') === 'jade', 'migrate: unknown shape dropped, color kept');
 check(normalizeColorId('sage~star') === 'cherry~star', 'migrate: unknown color coerced, known shape kept');
+
+// ---- seedButtons: the retroactive grant is a one-time gift ----
+check(seedButtons({ shelved: 67, slates: 4 }) === 107, 'buttons: seeded from counters (67 + 4x10)');
+check(seedButtons({}) === 0, 'buttons: fresh save seeds zero');
+check(seedButtons({ buttons: 3, shelved: 67, slates: 4 }) === 3, 'buttons: existing balance never re-grants');
+check(seedButtons({ buttons: 0, shelved: 67 }) === 0, 'buttons: a spent-to-zero balance stays zero');
+check(seedButtons({ buttons: -5, shelved: 2 }) === 2, 'buttons: corrupt balance re-seeds from counters');
+check(seedButtons({ buttons: 2.7 }) === 2, 'buttons: fractional balance floors');
 
 // ---- computePerfectScoop: finish every color in play, leftovers too ----
 trayBeads = [];
