@@ -64,6 +64,12 @@ check(evictIndex(['a', 'b', 'a', 'b']) === 3, 'evict: tie -> newest of tied');
 check(evictIndex(['b']) === 0, 'evict: lone bead');
 check(evictIndex(['a', 'b', 'b', 'c', 'b']) === 3, 'evict: two tied minorities -> newest');
 
+// ---- shapes are garnish: color sorts, silhouette decorates ----
+check(colorOf('c1~star') === 'c1' && shapeOf('c1~star') === 'star' && shapeOf('c1') === 'round',
+  'shape: colorOf/shapeOf split composite ids');
+check(evictIndex(['a', 'a~star', 'b']) === 2, 'evict: minority judged by color, shape ignored');
+check(evictIndex(['a', 'a~star']) === 1, 'evict: single color with shapes = undo (newest)');
+
 // ---- hasCleanMove: non-full jar, empty or uniformly the bead's color ----
 function cleanCase(jars, beads, want, label) {
   state = { jars };
@@ -77,6 +83,7 @@ cleanCase([['a', 'a'], ['x']], ['a'], true, 'matching uniform jar -> clean move'
 cleanCase([Array(12).fill('a'), ['x']], ['a'], false, 'matching jar but full -> none');
 cleanCase([['a', 'x'], ['y']], ['a'], false, 'only mixed/other jars -> none');
 cleanCase([['x']], [], false, 'empty tray -> vacuously none needed');
+cleanCase([['a', 'a~star'], ['x']], ['a~heart'], true, 'shaped bead fits its color-uniform jar');
 
 // ---- normalizeColorId: saves are a public contract ----
 // Evaluated in its own scope with the real palette ids, since the
@@ -91,6 +98,10 @@ check(normalizeColorId('cocoa') === 'clementine', 'migrate: retired cocoa -> cle
 check(normalizeColorId('jade') === 'jade', 'migrate: known id passes through');
 check(normalizeColorId('sage') === 'cherry', 'migrate: unknown future id coerced to a known color');
 check(normalizeColorId(undefined) === 'cherry', 'migrate: corrupt entry coerced, never crashes');
+check(normalizeColorId('jade~star') === 'jade~star', 'migrate: composite id passes with known shape');
+check(normalizeColorId('moss~heart') === 'jade~heart', 'migrate: retired color keeps its shape');
+check(normalizeColorId('jade~blob') === 'jade', 'migrate: unknown shape dropped, color kept');
+check(normalizeColorId('sage~star') === 'cherry~star', 'migrate: unknown color coerced, known shape kept');
 
 // ---- computePerfectScoop: finish every color in play, leftovers too ----
 trayBeads = [];
@@ -134,6 +145,11 @@ const totals = { c1: 9, c3: 6, c7: 2, c8: 1 };
 (inv || []).forEach(id => totals[id]++);
 check(inv && Object.values(totals).every(v => v % CAP === 0),
   'perfect: every in-play color lands on a multiple of 12');
+// shapes: a color-uniform jar with mixed silhouettes is still uniform
+state = { level: 5, jars: [['c0', 'c0~star', 'c0', 'c0~heart', 'c0', 'c0', 'c0'], [], [], [], []] };
+trayBeads = ['c0~cube'];
+check((computePerfectScoop() || []).length === 4,
+  'perfect: color-uniform jar with mixed shapes completes (7+1 -> +4)');
 trayBeads = [];
 
 // ---- backfillShelf: synthesized history for counter-only shelves ----
@@ -181,15 +197,17 @@ const TRIALS = 50000;
 for (let t = 0; t < TRIALS; t++) {
   const level = 1 + Math.floor(Math.random() * 12);
   const nColors = Math.min(3 + level, 10);
+  // some beads wear shapes — the composer must stay garnish-blind
+  const rid = () => 'c' + Math.floor(Math.random() * nColors) +
+    (Math.random() < 0.15 ? '~star' : '');
   const jars = Array.from({ length: JAR_COUNT }, () => {
     const n = Math.floor(Math.random() * 13);
-    return Array.from({ length: n }, () => 'c' + Math.floor(Math.random() * nColors));
+    return Array.from({ length: n }, rid);
   });
   // held leftovers are unbounded now that the pour is a standing button —
   // model everything up to a full hoard past room capacity, so the
   // null/wall states are exercised from hoard-heavy rooms
-  trayBeads = Array.from({ length: Math.floor(Math.random() * (ROOM_CAP + 12)) },
-    () => 'c' + Math.floor(Math.random() * nColors));
+  trayBeads = Array.from({ length: Math.floor(Math.random() * (ROOM_CAP + 12)) }, rid);
   state = { level, jars };
   const counts = inPlayCounts();
   const playTotal = Object.values(counts).reduce((a, b) => a + b, 0);

@@ -561,9 +561,15 @@
   // understands, or the scoop composer can deal beads pour() can't make.
   const RETIRED = { moss:'jade', cocoa:'clementine' };
   const KNOWN_IDS = new Set(COLORS.map(c => c.id));
+  // Purchasable silhouettes (round is implicit). A bead id is 'cherry'
+  // or 'cherry~star': color before the ~, shape after. Color is the
+  // sorting truth — shapes are garnish per plink-37v.2.
+  const SHAPES = new Set(['star', 'heart', 'cube']);
   function normalizeColorId(id){
-    const mapped = RETIRED[id] || id;
-    return KNOWN_IDS.has(mapped) ? mapped : COLORS[0].id;
+    const parts = String(id).split('~');
+    const mapped = RETIRED[parts[0]] || parts[0];
+    const color = KNOWN_IDS.has(mapped) ? mapped : COLORS[0].id;
+    return SHAPES.has(parts[1]) ? color + '~' + parts[1] : color;
   }
   state.jars = state.jars.map(jar => jar.map(normalizeColorId));
   if (Array.isArray(state.tray))
@@ -741,8 +747,8 @@
     b.innerHTML = '<span class="glass"><span class="fill"></span><span class="lid"></span></span>';
     jarsEl.appendChild(b);
     jarEls.push(b);
-    state.jars[i].forEach((colorId, idx) => {
-      const col = COLORS.find(c => c.id === colorId) || COLORS[0];
+    state.jars[i].forEach((beadId, idx) => {
+      const col = COLORS.find(c => c.id === colorOf(beadId)) || COLORS[0];
       addMini(i, col, idx, false);
     });
     let holdTimer = 0, holdFired = false;
@@ -817,10 +823,10 @@
   let heldBead = null;
   let pendingSlateExtra = null; // non-null while caps that finish a clean slate are landing
 
-  function makeBead(col, xPct, yPct, stagger, fall = true){
+  function makeBead(col, xPct, yPct, stagger, fall = true, id = col.id){
     const b = document.createElement('button');
     b.className = 'bead';
-    b.dataset.color = col.id;
+    b.dataset.color = id; // full identity, shape included; col paints it
     b.setAttribute('aria-label', col.name + ' bead');
     b.style.setProperty('--c', col.c);
     b.style.setProperty('--hi', col.hi);
@@ -849,7 +855,7 @@
     heldBead = b;
     if (b){
       b.classList.add('held');
-      announce('Picked up ' + b.dataset.color + ' bead. Choose a jar.');
+      announce('Picked up ' + colorOf(b.dataset.color) + ' bead. Choose a jar.');
     }
   }
 
@@ -873,14 +879,20 @@
   function activeColorCount(atLevel){
     return Math.min(3 + atLevel, COLORS.length);
   }
+  function colorOf(id){ return String(id).split('~')[0]; }
+  function shapeOf(id){ return String(id).split('~')[1] || 'round'; }
   function scoopBase(){
     return Math.min(16 + state.level * 2, 36);
   }
   function inPlayCounts(){
     const counts = {};
-    state.jars.forEach(jar => jar.forEach(id => { counts[id] = (counts[id] || 0) + 1; }));
+    state.jars.forEach(jar => jar.forEach(id => {
+      const c = colorOf(id);
+      counts[c] = (counts[c] || 0) + 1;
+    }));
     tray.querySelectorAll('.bead').forEach(b => {
-      counts[b.dataset.color] = (counts[b.dataset.color] || 0) + 1;
+      const c = colorOf(b.dataset.color);
+      counts[c] = (counts[c] || 0) + 1;
     });
     return counts;
   }
@@ -966,12 +978,14 @@
     const have = {}, jarsOf = {};
     for (const jar of state.jars){
       if (!jar.length) continue;
-      if (!jar.every(id => id === jar[0])) return null;
-      have[jar[0]] = (have[jar[0]] || 0) + jar.length;
-      jarsOf[jar[0]] = (jarsOf[jar[0]] || 0) + 1;
+      const c = colorOf(jar[0]);
+      if (!jar.every(id => colorOf(id) === c)) return null;
+      have[c] = (have[c] || 0) + jar.length;
+      jarsOf[c] = (jarsOf[c] || 0) + 1;
     }
     tray.querySelectorAll('.bead').forEach(b => {
-      have[b.dataset.color] = (have[b.dataset.color] || 0) + 1;
+      const c = colorOf(b.dataset.color);
+      have[c] = (have[c] || 0) + 1;
     });
     const bag = [];
     for (const c in have){
@@ -1004,8 +1018,8 @@
     clearedMsg.innerHTML = '';
     const pts = scatterPositions(bag.length);
     bag.forEach((id, i) => {
-      const col = COLORS.find(c => c.id === id) || COLORS[0];
-      makeBead(col, pts[i][0], pts[i][1], i);
+      const col = COLORS.find(c => c.id === colorOf(id)) || COLORS[0];
+      makeBead(col, pts[i][0], pts[i][1], i, true, id);
     });
     if (withSound){ pourSound(bag.length); tapCascade(bag.length); }
     save();
@@ -1119,7 +1133,7 @@
   function attemptDrop(bead, jar, fromX = 0, fromY = 0){
     if (bead.dataset.locked) return;
     const jarIndex = +jar.dataset.index;
-    const col = COLORS.find(c => c.id === bead.dataset.color);
+    const col = COLORS.find(c => c.id === colorOf(bead.dataset.color));
     if (jar.dataset.busy){ // mid-celebration; hand the bead back gently
       if (heldBead === bead) setHeld(null);
       returnBead(bead, fromX, fromY);
@@ -1153,9 +1167,10 @@
 
     const settle = () => {
       jarPending[jarIndex]--;
+      const beadId = bead.dataset.color; // keep the shape, not just the paint
       bead.remove();
       addMini(jarIndex, col, slotIndex, true);
-      state.jars[jarIndex].push(col.id);
+      state.jars[jarIndex].push(beadId);
       state.sorted++;
       beadsLeft--;
       if (!state.hinted){
@@ -1172,7 +1187,7 @@
       save();
       const contents = state.jars[jarIndex];
       if (contents.length >= CAP){
-        if (contents.every(id => id === contents[0])) capJar(jarIndex);
+        if (contents.every(id => colorOf(id) === colorOf(contents[0]))) capJar(jarIndex);
         else jarFullHint(jarIndex);
       }
       if (beadsLeft === 0) trayCleared();
@@ -1202,8 +1217,12 @@
     tapShelve();
     announce('Jar ' + (jarIndex + 1) + ' is full! Shelved.');
     setTimeout(() => {
-      // jars only cap uniform, so [0] is the jar's color
-      state.shelf.push({ c: state.jars[jarIndex][0], t: localDate() });
+      // jars cap color-uniform; the shelf entry keeps the full composite
+      // id only when all twelve beads share the shape too (a matched jar
+      // is worth remembering as matched — the shelf can show it off)
+      const jarBeads = state.jars[jarIndex];
+      const matched = jarBeads.every(id => id === jarBeads[0]);
+      state.shelf.push({ c: matched ? jarBeads[0] : colorOf(jarBeads[0]), t: localDate() });
       state.jars[jarIndex] = [];
       state.shelved++;
       jar.querySelector('.fill').innerHTML = '';
@@ -1223,12 +1242,11 @@
   // like a plain undo.
   function evictIndex(contents){
     const counts = {};
-    contents.forEach(id => { counts[id] = (counts[id] || 0) + 1; });
+    contents.forEach(id => { const c = colorOf(id); counts[c] = (counts[c] || 0) + 1; });
     let min = Infinity;
-    for (const id in counts) min = Math.min(min, counts[id]);
+    for (const c in counts) min = Math.min(min, counts[c]);
     let best = -1;
-    for (const id in counts)
-      if (counts[id] === min) best = Math.max(best, contents.lastIndexOf(id));
+    contents.forEach((id, i) => { if (counts[colorOf(id)] === min) best = Math.max(best, i); });
     return best;
   }
 
@@ -1263,11 +1281,11 @@
     const pts = scatterPositions(n);
     if (n > 1) pourSound(n);
     evicted.forEach((ev, k) => {
-      const col = COLORS.find(c => c.id === ev.id) || COLORS[0];
+      const col = COLORS.find(c => c.id === colorOf(ev.id)) || COLORS[0];
       setTimeout(() => {
         if (ev.el) ev.el.remove();
         reflowMinis(fill);
-        spawnFromJar(col, pts[k][0], pts[k][1], jar);
+        spawnFromJar(col, pts[k][0], pts[k][1], jar, ev.id);
         // single take-back keeps its low echo; a multi-bead pour lets the
         // felt patter speak alone (two voices at once sounded like a bug)
         if (n === 1) tone(NOTES[jarIndex] / 2, { vol: 0.14, dur: 0.24 });
@@ -1280,7 +1298,7 @@
     clearedMsg.textContent = '';
     jar.setAttribute('aria-label', jarLabel(jarIndex));
     announce(n === 1
-      ? 'Took a ' + evicted[0].id + ' bead back from jar ' + (jarIndex + 1) + '.'
+      ? 'Took a ' + colorOf(evicted[0].id) + ' bead back from jar ' + (jarIndex + 1) + '.'
       : 'Poured ' + n + ' beads from jar ' + (jarIndex + 1) + ' back onto the tray.');
     renderStats();
     save();
@@ -1291,8 +1309,8 @@
     }, RM ? 50 : 160 + n * 70 + 460);
   }
 
-  function spawnFromJar(col, xPct, yPct, jar){
-    const b = makeBead(col, xPct, yPct, 0, false);
+  function spawnFromJar(col, xPct, yPct, jar, id = col.id){
+    const b = makeBead(col, xPct, yPct, 0, false, id);
     if (RM) return;
     const br = b.getBoundingClientRect();
     const gr = jar.querySelector('.glass').getBoundingClientRect();
@@ -1335,10 +1353,10 @@
   // empty or holds only that bead's color (every() is true on empties).
   function hasCleanMove(){
     const trayColors = new Set();
-    tray.querySelectorAll('.bead').forEach(b => trayColors.add(b.dataset.color));
+    tray.querySelectorAll('.bead').forEach(b => trayColors.add(colorOf(b.dataset.color)));
     for (const color of trayColors)
       for (const jar of state.jars)
-        if (jar.length < CAP && jar.every(id => id === color)) return true;
+        if (jar.length < CAP && jar.every(id => colorOf(id) === color)) return true;
     return false;
   }
 
@@ -1433,7 +1451,7 @@
     if (RM || document.hidden) return;
     const mixed = state.jars
       .map((jar, i) => ({ jar, i }))
-      .filter(x => x.jar.length > 1 && !x.jar.every(id => id === x.jar[0]) &&
+      .filter(x => x.jar.length > 1 && !x.jar.every(id => colorOf(id) === colorOf(x.jar[0])) &&
                    !jarEls[x.i].dataset.busy);
     if (!mixed.length){ nextJiggle = Date.now() + JIGGLE_MS; return; }
     if (Date.now() < nextJiggle) return;
@@ -1499,7 +1517,7 @@
         row.className = 'shelf-row';
         row.style.setProperty('--cols', cols);
         g.entries.slice(i, i + cols).forEach((e, j) => {
-          const col = COLORS.find(c => c.id === e.c) || COLORS[0];
+          const col = COLORS.find(c => c.id === colorOf(e.c)) || COLORS[0];
           const jar = document.createElement('div');
           jar.className = 'sjar' + (e.s ? ' dusty' : '');
           jar.setAttribute('role', 'img');
@@ -1570,8 +1588,8 @@
   // Restore leftover tray beads from the last visit, or pour a fresh scoop.
   if (Array.isArray(state.tray) && state.tray.length){
     state.tray.forEach((t, i) => {
-      const col = COLORS.find(c => c.id === t.id) || COLORS[0];
-      makeBead(col, t.x, t.y, i);
+      const col = COLORS.find(c => c.id === colorOf(t.id)) || COLORS[0];
+      makeBead(col, t.x, t.y, i, true, t.id);
     });
     updatePourUI();
   } else {
@@ -1579,7 +1597,7 @@
     // cap never landed; finish those before offering the next scoop.
     let owedCaps = 0;
     state.jars.forEach((jar, i) => {
-      if (jar.length >= CAP && jar.every(id => id === jar[0])){
+      if (jar.length >= CAP && jar.every(id => colorOf(id) === colorOf(jar[0]))){
         owedCaps++;
         setTimeout(() => capJar(i), 600);
       }
