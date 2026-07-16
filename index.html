@@ -326,13 +326,111 @@
     font-size:11px; color:var(--cream-dim);
   }
 
+  /* ---------- the shelf: every jar ever filled ---------- */
+  .shelf-view{
+    position:fixed; inset:0; z-index:60;
+    display:flex; flex-direction:column;
+    max-width:520px; margin:0 auto;
+    padding:calc(10px + env(safe-area-inset-top)) 14px calc(8px + env(safe-area-inset-bottom));
+    background:
+      radial-gradient(120% 90% at 50% 0%, rgba(255,220,170,.10), transparent 60%),
+      radial-gradient(140% 120% at 50% 110%, rgba(0,0,0,.38), transparent 55%),
+      repeating-linear-gradient(90deg,
+        var(--wood-1) 0px, var(--wood-2) 46px, var(--wood-1) 47px,
+        var(--wood-2) 90px, var(--wood-3) 91px, var(--wood-1) 138px),
+      var(--wood-2);
+    animation:shelfin .25s ease;
+  }
+  .shelf-view[hidden]{display:none;}
+  @keyframes shelfin{from{opacity:0;}}
+  .shelf-head{display:flex; align-items:baseline; justify-content:space-between; padding:2px 4px 8px;}
+  .shelf-title{
+    margin:0;
+    font-family:var(--marker); font-weight:400;
+    font-size:26px; letter-spacing:.03em;
+    color:var(--cream);
+    text-shadow:0 1px 3px rgba(0,0,0,.35);
+  }
+  .shelf-close{
+    background:none; border:0; cursor:pointer;
+    color:var(--cream-dim); font-size:32px; line-height:1;
+    padding:2px 10px 6px;
+  }
+  .shelf-close:hover{color:var(--cream);}
+  .shelf-scroll{flex:1; overflow-y:auto; min-height:0; padding:4px 2px 14px;}
+  .shelf-group-label{
+    margin:16px 4px 10px;
+    font-size:11.5px; font-weight:700; letter-spacing:.14em;
+    color:var(--cream-dim);
+  }
+  /* rows are real elements, so the plank spans the full shelf even when
+     jars only fill part of it */
+  .shelf-row{
+    position:relative;
+    display:flex;
+    padding:8px 0 9px; /* headroom for the lids */
+    margin-bottom:16px;
+  }
+  .shelf-row::after{
+    content:''; position:absolute; left:-6px; right:-6px; bottom:0; height:8px;
+    background:linear-gradient(180deg, var(--wood-1), var(--wood-3));
+    border-radius:2px;
+    box-shadow:0 3px 5px rgba(0,0,0,.35);
+  }
+  .sjar{
+    width:calc(100% / var(--cols));
+    display:flex; justify-content:center;
+  }
+  /* a shelved jar is the game's jar at half scale: same glass, same
+     wooden lid, twelve real beads on the same slot grid with jitter */
+  .sjar .sglass{
+    position:relative;
+    width:34px; height:40px;
+    border-radius:5px 5px 8px 8px;
+    background:linear-gradient(180deg, rgba(255,255,255,.20), rgba(255,255,255,.09) 30%, rgba(255,255,255,.13));
+    border:1px solid rgba(255,255,255,.38);
+    box-shadow:inset 0 -5px 8px rgba(0,0,0,.16), 0 2px 4px rgba(0,0,0,.3);
+  }
+  .sjar .sglass::after{ /* shine */
+    content:''; position:absolute; left:9%; top:14%; width:14%; height:60%;
+    border-radius:999px;
+    background:linear-gradient(180deg, rgba(255,255,255,.5), rgba(255,255,255,0));
+  }
+  .sfill{position:absolute; inset:4px 3px 3px;}
+  .sbead{
+    position:absolute;
+    width:7.5px; height:7.5px; border-radius:50%;
+    background:radial-gradient(circle at 32% 30%, var(--hi), var(--c) 52%, var(--lo));
+    box-shadow:0 1px 1px rgba(0,0,0,.3);
+  }
+  .sbead::after{
+    content:''; position:absolute; left:50%; top:50%;
+    width:38%; height:38%; transform:translate(-50%,-50%);
+    border-radius:50%;
+    background:rgba(20,10,5,.55);
+  }
+  .sjar .slid{
+    position:absolute; left:-3px; right:-3px; top:-6px; height:8px;
+    border-radius:4px;
+    background:linear-gradient(180deg, #8a6a4a, #5f4227);
+    border:1px solid rgba(0,0,0,.35);
+    box-shadow:0 1px 2px rgba(0,0,0,.4);
+  }
+  .sjar.dusty .sglass{opacity:.72; filter:saturate(.7);}
+  .shelf-empty{
+    margin:40px 10px; text-align:center;
+    font-size:14px; font-weight:600; line-height:1.7;
+    color:var(--cream-dim);
+  }
+  .shelf-util{padding-top:6px;}
+
   .sr{
     position:absolute; width:1px; height:1px;
     overflow:hidden; clip:rect(0 0 0 0); white-space:nowrap;
   }
 
   @media (prefers-reduced-motion: reduce){
-    .bead.landing,.jar.pop,.jar.jiggle .glass,.mini.drop-in,.spark{animation:none;}
+    .bead.landing,.jar.pop,.jar.jiggle .glass,.mini.drop-in,.spark,.shelf-view{animation:none;}
     .jar,.glass,.lid,.tape-btn,.hint,.mini{transition:none;}
   }
   @media (min-height:760px){
@@ -367,17 +465,28 @@
   </div>
 
   <footer class="statsbar">
-    <button class="stats" id="stats" aria-expanded="false" aria-controls="backupPanel"
-      aria-label="Progress. Press for backup options."></button>
-    <div class="backup" id="backupPanel" hidden>
+    <button class="stats" id="stats" aria-haspopup="dialog" aria-controls="shelfView"
+      aria-label="Progress. Press to look up at the shelf."></button>
+  </footer>
+  <div class="sr" aria-live="polite" id="sr"></div>
+</main>
+
+<div class="shelf-view" id="shelfView" hidden role="dialog" aria-modal="true"
+  aria-label="The shelf: every jar ever filled">
+  <div class="shelf-head">
+    <h2 class="shelf-title">the shelf</h2>
+    <button class="shelf-close" id="shelfClose" aria-label="Back to the tray">&times;</button>
+  </div>
+  <div class="shelf-scroll" id="shelfScroll"></div>
+  <div class="shelf-util">
+    <div class="backup" id="backupPanel">
       <button class="tape-btn tape-sm" id="copySaveBtn">copy backup</button>
       <button class="tape-btn tape-sm" id="restoreSaveBtn">restore backup</button>
       <p class="backup-note" id="backupNote">your beads, jars, and shelf as text — paste it somewhere safe, or into another device</p>
       <p class="backup-note" id="buildNote"></p>
     </div>
-  </footer>
-  <div class="sr" aria-live="polite" id="sr"></div>
-</main>
+  </div>
+</div>
 
 <script>
 (() => {
@@ -1345,30 +1454,94 @@
   if (navigator.storage && navigator.storage.persist)
     navigator.storage.persist().catch(() => {});
 
-  const backupPanel = document.getElementById('backupPanel');
+  /* ---------- the shelf: every jar ever filled ---------- */
+  // The stats line is the door: the number you admire opens the thing it
+  // counts. Jars render in finished order, oldest first, grouped by
+  // month; jars shelved before records exist sit in their own dusty
+  // group up front. Backup utilities live here too — admiration and
+  // housekeeping both belong off the fidget.
+  const shelfView = document.getElementById('shelfView');
+  const shelfScroll = document.getElementById('shelfScroll');
+  const shelfClose = document.getElementById('shelfClose');
   const backupNote = document.getElementById('backupNote');
   const NOTE_DEFAULT = backupNote.textContent;
-  // Nothing signposts that a second footer tap closes the panel, so it
-  // also tidies itself away after a quiet while; any touch inside keeps
-  // it open longer.
-  let backupHideTimer = 0;
-  function armBackupHide(){
-    clearTimeout(backupHideTimer);
-    if (backupPanel.hidden) return;
-    backupHideTimer = setTimeout(() => {
-      backupPanel.hidden = true;
-      statsEl.setAttribute('aria-expanded', 'false');
-    }, 8000);
+  const MONTHS = ['january','february','march','april','may','june',
+    'july','august','september','october','november','december'];
+  function shelfGroupKey(e){
+    if (e.s || !e.t) return 'before we kept records';
+    const [y, m] = e.t.split('-');
+    return MONTHS[+m - 1] + ' ' + y;
   }
-  statsEl.addEventListener('click', () => {
-    backupPanel.hidden = !backupPanel.hidden;
-    statsEl.setAttribute('aria-expanded', String(!backupPanel.hidden));
+  function renderShelf(){
+    shelfScroll.innerHTML = '';
+    if (!state.shelf || !state.shelf.length){
+      const p = document.createElement('p');
+      p.className = 'shelf-empty';
+      p.textContent = 'nothing up here yet · gather twelve of one color and the jar joins the shelf';
+      shelfScroll.appendChild(p);
+      return;
+    }
+    const cols = Math.max(4, Math.floor(shelfScroll.clientWidth / 54));
+    const groups = [];
+    state.shelf.forEach(e => {
+      const key = shelfGroupKey(e);
+      if (!groups.length || groups[groups.length - 1].key !== key)
+        groups.push({ key, entries: [] });
+      groups[groups.length - 1].entries.push(e);
+    });
+    groups.forEach(g => {
+      const label = document.createElement('p');
+      label.className = 'shelf-group-label';
+      label.textContent = g.key;
+      shelfScroll.appendChild(label);
+      for (let i = 0; i < g.entries.length; i += cols){
+        const row = document.createElement('div');
+        row.className = 'shelf-row';
+        row.style.setProperty('--cols', cols);
+        g.entries.slice(i, i + cols).forEach((e, j) => {
+          const col = COLORS.find(c => c.id === e.c) || COLORS[0];
+          const jar = document.createElement('div');
+          jar.className = 'sjar' + (e.s ? ' dusty' : '');
+          jar.setAttribute('role', 'img');
+          jar.setAttribute('aria-label', col.name + (e.t ? ', ' + e.t : ', before records'));
+          jar.title = col.name + (e.t ? ' · ' + e.t : '');
+          // the game's slot grid with deterministic per-jar jitter, so
+          // every jar's beads sit a little differently but never reshuffle
+          const idx = i + j;
+          let beads = '';
+          for (let k = 0; k < CAP; k++){
+            const x = 12 + (k % 3) * 31 + (((idx * 31 + k * 17) % 7) - 3);
+            const y = 3 + Math.floor(k / 3) * 21 + (((idx * 13 + k * 29) % 5) - 2);
+            beads += '<span class="sbead" style="left:' + x + '%;bottom:' + y + '%"></span>';
+          }
+          jar.innerHTML = '<span class="sglass" style="--c:' + col.c + ';--hi:' + col.hi +
+            ';--lo:' + col.lo + '"><span class="sfill">' + beads +
+            '</span><span class="slid"></span></span>';
+          row.appendChild(jar);
+        });
+        shelfScroll.appendChild(row);
+      }
+    });
+  }
+  function openShelf(){
+    shelfView.hidden = false; // visible first: renderShelf measures width
+    renderShelf();
     backupNote.textContent = NOTE_DEFAULT;
     document.getElementById('buildNote').textContent =
       'this copy deployed ' + document.lastModified;
-    armBackupHide();
+    shelfScroll.scrollTop = shelfScroll.scrollHeight; // newest jars greet you
+    shelfClose.focus();
+  }
+  function closeShelf(){
+    shelfView.hidden = true;
+    statsEl.focus();
+  }
+  statsEl.addEventListener('click', openShelf);
+  shelfClose.addEventListener('click', closeShelf);
+  addEventListener('resize', () => { if (!shelfView.hidden) renderShelf(); });
+  document.addEventListener('keydown', ev => {
+    if (ev.key === 'Escape' && !shelfView.hidden) closeShelf();
   });
-  backupPanel.addEventListener('pointerdown', armBackupHide);
   document.getElementById('copySaveBtn').addEventListener('click', async () => {
     save();
     try {
@@ -1378,7 +1551,6 @@
       backupNote.textContent = 'couldn’t reach the clipboard — try again after tapping the page';
     }
     announce(backupNote.textContent);
-    armBackupHide(); // full quiet-while starts after the note appears
   });
   document.getElementById('restoreSaveBtn').addEventListener('click', async () => {
     try {
@@ -1393,7 +1565,6 @@
       backupNote.textContent = 'that doesn’t look like a plink backup — copy one first, then restore';
       announce(backupNote.textContent);
     }
-    armBackupHide(); // confirm() blocks; restart the clock once it clears
   });
 
   // Restore leftover tray beads from the last visit, or pour a fresh scoop.
