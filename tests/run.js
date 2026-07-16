@@ -186,8 +186,9 @@ for (let t = 0; t < TRIALS; t++) {
     return Array.from({ length: n }, () => 'c' + Math.floor(Math.random() * nColors));
   });
   // held leftovers are unbounded now that the pour offer is purely
-  // semantic — model up to a fat hoard
-  trayBeads = Array.from({ length: Math.floor(Math.random() * 16) },
+  // semantic — model everything up to a full standing-pour hoard, past
+  // capacity, so the null/wall states are exercised from hoard-heavy rooms
+  trayBeads = Array.from({ length: Math.floor(Math.random() * 72) },
     () => 'c' + Math.floor(Math.random() * nColors));
   state = { level, jars };
   const counts = inPlayCounts();
@@ -207,6 +208,53 @@ for (let t = 0; t < TRIALS; t++) {
   if (!clearable && !shelvable) bad++;
 }
 check(bad === 0, `scoop: no-deadlock invariant over ${TRIALS} random states (${bad} bad)`);
+
+// ---- standing-pour boundaries: hoarding never wedges ----
+// A hoarder pours without sorting. The composer must (a) never let beads
+// in play exceed one breath past capacity, (b) hit its wall only when a
+// complete dozen is already in play — so a "fill a jar to shelve it"
+// signpost is always true — and (c) after shelving that dozen, deal
+// again. (Shelving is modeled as removing CAP beads of the color: a jar
+// is always freeable via pour-back, which has no capacity check.)
+{
+  const CEILING = TOTAL_CAP + Math.max(MIN_BREATH, CAP - 1);
+  let overshoot = 0, badWall = 0, wedged = 0, walls = 0;
+  for (let trial = 0; trial < 400; trial++) {
+    state = { level: 1 + Math.floor(Math.random() * 12),
+              jars: Array.from({ length: JAR_COUNT }, () => []) };
+    trayBeads = [];
+    for (let step = 0; step < 60; step++) {
+      const bag = computeScoop();
+      if (bag) {
+        trayBeads.push(...bag);
+        if (trayBeads.length > CEILING) overshoot++;
+        continue;
+      }
+      walls++;
+      const counts = {};
+      trayBeads.forEach(id => counts[id] = (counts[id] || 0) + 1);
+      const top = Object.keys(counts).reduce((a, b) => counts[a] >= counts[b] ? a : b);
+      if (counts[top] < CAP) { badWall++; break; }
+      for (let k = 0; k < CAP; k++) trayBeads.splice(trayBeads.indexOf(top), 1);
+      if (!computeScoop()) { wedged++; break; }
+    }
+  }
+  check(overshoot === 0, 'hoard: in-play never exceeds one breath past capacity (' + CEILING + ')');
+  check(badWall === 0 && walls > 0, `hoard: the wall always holds a shelvable dozen (${walls} walls hit)`);
+  check(wedged === 0, 'hoard: shelving at the wall always reopens the room');
+}
+
+// ---- perfect scoop stays sound under a fat hoard ----
+{
+  state = { level: 9, jars: [Array(6).fill('c0'), [], [], [], []] };
+  trayBeads = [...Array(20).fill('c1'), ...Array(9).fill('c2'), 'c0'];
+  const fat = computePerfectScoop();
+  const after = { c0: 7, c1: 20, c2: 9 };
+  (fat || []).forEach(id => after[id]++);
+  check(fat && fat.length === 12 && Object.values(after).every(v => v % CAP === 0),
+    'perfect: fat hoard still lands every color on a multiple of 12');
+  trayBeads = [];
+}
 
 console.log(failures ? `\n${failures} FAILURE(S)` : '\nall gates green');
 process.exit(failures ? 1 : 0);
