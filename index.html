@@ -424,6 +424,26 @@
   }
   .shelf-util{padding-top:6px;}
 
+  /* ---------- bead silhouettes (purchased shapes) ---------- */
+  /* Masks rather than clip-path: they scale to every bead size (44px
+     tray, 13px jar mini, 7.5px shelf), keep the full touch target, and
+     let drop-shadow follow the cut edge. Shading, gloss and the center
+     hole all continue inside the silhouette. */
+  .shape-cube{border-radius:22%;}
+  .shape-star,.shape-heart{
+    border-radius:0;
+    box-shadow:none;
+    filter:drop-shadow(0 1.5px 1.5px rgba(0,0,0,.32));
+  }
+  .shape-star{
+    -webkit-mask:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'><path d='M12,1.5L14.9,8.4L22.4,9L16.7,13.9L18.4,21.2L12,17.3L5.6,21.2L7.3,13.9L1.6,9L9.1,8.4Z'/></svg>") center/100% 100% no-repeat;
+    mask:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'><path d='M12,1.5L14.9,8.4L22.4,9L16.7,13.9L18.4,21.2L12,17.3L5.6,21.2L7.3,13.9L1.6,9L9.1,8.4Z'/></svg>") center/100% 100% no-repeat;
+  }
+  .shape-heart{
+    -webkit-mask:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'><path d='M12,21.8C8.4,18.4,1.9,13.2,1.9,7.9C1.9,4.3,4.6,2.1,7.4,2.1C9.4,2.1,11.1,3.2,12,4.9C12.9,3.2,14.6,2.1,16.6,2.1C19.4,2.1,22.1,4.3,22.1,7.9C22.1,13.2,15.6,18.4,12,21.8Z'/></svg>") center/100% 100% no-repeat;
+    mask:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'><path d='M12,21.8C8.4,18.4,1.9,13.2,1.9,7.9C1.9,4.3,4.6,2.1,7.4,2.1C9.4,2.1,11.1,3.2,12,4.9C12.9,3.2,14.6,2.1,16.6,2.1C19.4,2.1,22.1,4.3,22.1,7.9C22.1,13.2,15.6,18.4,12,21.8Z'/></svg>") center/100% 100% no-repeat;
+  }
+
   .sr{
     position:absolute; width:1px; height:1px;
     overflow:hidden; clip:rect(0 0 0 0); white-space:nowrap;
@@ -763,7 +783,7 @@
     jarEls.push(b);
     state.jars[i].forEach((beadId, idx) => {
       const col = COLORS.find(c => c.id === colorOf(beadId)) || COLORS[0];
-      addMini(i, col, idx, false);
+      addMini(i, col, idx, false, shapeOf(beadId));
     });
     let holdTimer = 0, holdFired = false;
     const cancelHold = () => clearTimeout(holdTimer);
@@ -787,10 +807,11 @@
       }
     });
   }
-  function addMini(jarIndex, col, index, animate){
+  function addMini(jarIndex, col, index, animate, shape = 'round'){
     const fill = jarEls[jarIndex].querySelector('.fill');
     const m = document.createElement('span');
-    m.className = 'mini' + (animate && !RM ? ' drop-in' : '');
+    m.className = 'mini' + (animate && !RM ? ' drop-in' : '') +
+      (shape !== 'round' ? ' shape-' + shape : '');
     m.style.setProperty('--c', col.c);
     m.style.setProperty('--hi', col.hi);
     m.style.setProperty('--lo', col.lo);
@@ -841,7 +862,9 @@
     const b = document.createElement('button');
     b.className = 'bead';
     b.dataset.color = id; // full identity, shape included; col paints it
-    b.setAttribute('aria-label', col.name + ' bead');
+    const shape = shapeOf(id);
+    if (shape !== 'round') b.classList.add('shape-' + shape);
+    b.setAttribute('aria-label', (shape !== 'round' ? shape + ' ' : '') + col.name + ' bead');
     b.style.setProperty('--c', col.c);
     b.style.setProperty('--hi', col.hi);
     b.style.setProperty('--lo', col.lo);
@@ -1193,7 +1216,7 @@
       jarPending[jarIndex]--;
       const beadId = bead.dataset.color; // keep the shape, not just the paint
       bead.remove();
-      addMini(jarIndex, col, slotIndex, true);
+      addMini(jarIndex, col, slotIndex, true, shapeOf(beadId));
       state.jars[jarIndex].push(beadId);
       state.sorted++;
       beadsLeft--;
@@ -1545,19 +1568,22 @@
         row.style.setProperty('--cols', cols);
         g.entries.slice(i, i + cols).forEach((e, j) => {
           const col = COLORS.find(c => c.id === colorOf(e.c)) || COLORS[0];
+          const shape = shapeOf(e.c); // composite only when all 12 matched
+          const kind = col.name + (shape !== 'round' ? ' ' + shape + 's' : '');
           const jar = document.createElement('div');
           jar.className = 'sjar' + (e.s ? ' dusty' : '');
           jar.setAttribute('role', 'img');
-          jar.setAttribute('aria-label', col.name + (e.t ? ', ' + e.t : ', before records'));
-          jar.title = col.name + (e.t ? ' · ' + e.t : '');
+          jar.setAttribute('aria-label', kind + (e.t ? ', ' + e.t : ', before records'));
+          jar.title = kind + (e.t ? ' · ' + e.t : '');
           // the game's slot grid with deterministic per-jar jitter, so
           // every jar's beads sit a little differently but never reshuffle
           const idx = i + j;
+          const beadCls = 'sbead' + (shape !== 'round' ? ' shape-' + shape : '');
           let beads = '';
           for (let k = 0; k < CAP; k++){
             const x = 12 + (k % 3) * 31 + (((idx * 31 + k * 17) % 7) - 3);
             const y = 3 + Math.floor(k / 3) * 21 + (((idx * 13 + k * 29) % 5) - 2);
-            beads += '<span class="sbead" style="left:' + x + '%;bottom:' + y + '%"></span>';
+            beads += '<span class="' + beadCls + '" style="left:' + x + '%;bottom:' + y + '%"></span>';
           }
           jar.innerHTML = '<span class="sglass" style="--c:' + col.c + ';--hi:' + col.hi +
             ';--lo:' + col.lo + '"><span class="sfill">' + beads +
@@ -1612,6 +1638,30 @@
     }
   });
 
+  // Review aids: shapes exist in the engine before the catalog can sell
+  // them, so reviews need a way to deal some. Reachable on localhost or
+  // with ?preview on the URL — normal play never deals a shape.
+  const PREVIEW = location.hostname === 'localhost' || location.search.includes('preview');
+  if (PREVIEW){
+    window.plinkDealShapes = (shape = 'star') => {
+      const pts = scatterPositions(12);
+      for (let i = 0; i < 12; i++){
+        const col = COLORS[i % activeColorCount(state.level)];
+        makeBead(col, pts[i][0], pts[i][1], i, true, col.id + '~' + shape);
+      }
+      save();
+    };
+    window.plinkShelfShapes = () => {
+      const real = state.shelf;
+      state.shelf = real.concat(
+        { c: 'cherry~star', t: localDate() },
+        { c: 'jade~heart', t: localDate() },
+        { c: 'cornflower~cube', t: localDate() });
+      openShelf();
+      state.shelf = real; // rendered, never saved
+    };
+  }
+
   // Restore leftover tray beads from the last visit, or pour a fresh scoop.
   if (Array.isArray(state.tray) && state.tray.length){
     state.tray.forEach((t, i) => {
@@ -1630,6 +1680,23 @@
       }
     });
     if (!owedCaps) pour(false); // first scoop is already waiting
+  }
+
+  // ?preview on a phone has no console: auto-deal the review scoop once —
+  // every shape in four colors, plus a matched dozen of star cherries so
+  // a matched cap (bigger sparkle, bonus, shelf silhouette) can be tested
+  // end to end. Skipped while shaped beads are already on the tray.
+  if (PREVIEW && location.search.includes('preview') &&
+      !Array.from(tray.querySelectorAll('.bead')).some(b => shapeOf(b.dataset.color) !== 'round')){
+    const deal = [];
+    COLORS.slice(0, 4).forEach(c => deal.push(c.id + '~star', c.id + '~heart', c.id + '~cube'));
+    for (let k = 0; k < CAP; k++) deal.push(COLORS[0].id + '~star');
+    const pts = scatterPositions(deal.length);
+    deal.forEach((id, i) => {
+      const col = COLORS.find(c => c.id === colorOf(id)) || COLORS[0];
+      makeBead(col, pts[i][0], pts[i][1], i, true, id);
+    });
+    save();
   }
 })();
 </script>
