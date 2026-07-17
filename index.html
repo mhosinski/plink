@@ -622,14 +622,14 @@
   const ROOM_CAP = TOTAL_CAP * 2;
   const MIN_BREATH = 10; // smallest real scoop, even when held leftovers crowd capacity
   const RM = matchMedia('(prefers-reduced-motion: reduce)').matches;
-  // plink-uni prototype gate: reachable only with ?preview&uni on the URL.
-  // Normal play (UNI false) never executes any branch this flag guards —
-  // every touched function's false-path is the original production code.
   const PREVIEW = location.hostname === 'localhost' || location.search.includes('preview');
-  const UNI = PREVIEW && location.search.includes('uni');
+  // The two-compartment tray graduated from ?preview&uni (plink-ece) and
+  // IS the game now. The flag remains so each guarded branch still names
+  // its pre-uni counterpart until the old composer machinery is retired.
+  const UNI = true;
   // Pre-sort sits at the TOP — staging before jars, and jars sit above
   // the tray, so lifting a bead up into pre-sort reads correctly.
-  const PRESORT_Y = 24;   // % from top the pre-sort zone occupies; first knob to retune
+  const PRESORT_Y = 24;   // % from top the pre-sort well occupies; first knob to retune
   const PRESORT_CAP = 18; // physical bound on the pre-sort dish; second knob
 
   const tray = document.getElementById('tray');
@@ -652,7 +652,13 @@
                 shelf:[],   // one {c, t} per shelved jar, in finished order; jars
                             // shelved before this existed live only in the counter
                 buttons:null, // craft currency; null = not yet seeded (plink-lr8)
-                owned:[] };   // purchased shape unlocks
+                owned:[],     // purchased shape unlocks
+                // Two-compartment era (plink-ece graduation). Cadence counts
+                // sorted beads, not pours, so tip-back spam can never summon
+                // a grand spill; 0 mirrors nextPerfect's own first-pour rule.
+                uniSorted:0, uniNextPerfect:0,
+                uniGift:null,        // a just-unlocked color the next honest scoop must include
+                presortHinted:false };// the pre-sort whisper has been seen and answered
   try {
     const raw = localStorage.getItem(KEY);
     if (raw) state = Object.assign(state, JSON.parse(raw));
@@ -696,6 +702,8 @@
   state.jars = state.jars.map(jar => jar.map(normalizeColorId));
   if (Array.isArray(state.tray))
     state.tray.forEach(t => { t.id = normalizeColorId(t.id); });
+  // The pending gift is a bare color; normalize it like everything else.
+  state.uniGift = state.uniGift ? normalizeColorId(state.uniGift).split('~')[0] : null;
   if (Array.isArray(state.shelf))
     state.shelf.forEach(s => {
       s.c = normalizeColorId(s.c);
@@ -1045,15 +1053,6 @@
   function presortCount(){
     return Array.from(tray.querySelectorAll('.bead')).filter(inPresort).length;
   }
-  let uniGiftPending = null; // a just-unlocked color the next honest scoop must include
-  // Cadence counts sorted beads, not pours, so remix spam can never
-  // summon a grand spill — but the rhythm must still match production's
-  // 3-8 pours, so the gap scales by a scoop's worth of sorted beads.
-  let uniSorted = 0; // in-memory only, resets on reload (prototype cut)
-  function rollUniNextPerfect(){
-    return uniSorted + (3 + Math.floor(Math.random() * 6)) * scoopBase();
-  }
-  let uniNextPerfect = rollUniNextPerfect();
 
   function activeColorCount(atLevel){
     return Math.min(3 + atLevel, COLORS.length);
@@ -1082,6 +1081,12 @@
   }
   function scoopBase(){
     return Math.min(16 + state.level * 2, 36);
+  }
+  // Perfect-scoop cadence counts sorted beads, not pours (tip-back spam
+  // must never summon a grand spill), scaled by a scoop's worth of beads
+  // so the rhythm stays the pours-era 3-8.
+  function rollUniNextPerfect(){
+    return state.uniSorted + (3 + Math.floor(Math.random() * 6)) * scoopBase();
   }
   function inPlayCounts(){
     const counts = {};
@@ -1143,9 +1148,9 @@
     const pool = COLORS.slice(0, activeColorCount(state.level)).map(c => c.id);
     const size = scoopBase();
     const bag = [];
-    if (uniGiftPending && pool.includes(uniGiftPending)){
-      bag.push(uniGiftPending);
-      uniGiftPending = null;
+    if (state.uniGift && pool.includes(state.uniGift)){
+      bag.push(state.uniGift);
+      state.uniGift = null;
     }
     while (bag.length < size) bag.push(pool[Math.floor(Math.random() * pool.length)]);
     for (let i = bag.length - 1; i > 0; i--){
@@ -1229,7 +1234,7 @@
     if (UNI){
       // pourCount is never touched during UNI play, so switching back to
       // normal play can't have its cadence contaminated by remix spam.
-      if (uniSorted >= uniNextPerfect){
+      if (state.uniSorted >= state.uniNextPerfect){
         bag = computePerfectScoop();
         dealtPerfect = !!bag;
       }
@@ -1243,7 +1248,7 @@
     }
     if (!bag){ showPourUI(); return; }
     bag = decorateBag(bag, state.owned, Math.random);
-    if (UNI){ if (dealtPerfect) uniNextPerfect = rollUniNextPerfect(); }
+    if (UNI){ if (dealtPerfect) state.uniNextPerfect = rollUniNextPerfect(); }
     else {
       state.pourCount++;
       if (dealtPerfect) state.nextPerfect = rollNextPerfect();
@@ -1398,7 +1403,10 @@
         tone(150, { vol:0.1, dur:0.12 });
         announce('the pre-sort dish is full');
       }
-      if (presortHintEl && clampedY < PRESORT_Y) presortHintEl.classList.add('gone');
+      if (presortHintEl && clampedY < PRESORT_Y){
+        presortHintEl.classList.add('gone');
+        state.presortHinted = true;
+      }
     }
     bead.style.left = clampedX + '%';
     bead.style.top = clampedY + '%';
@@ -1468,7 +1476,7 @@
       state.jars[jarIndex].push(beadId);
       state.sorted++;
       beadsLeft--;
-      if (UNI) uniSorted++;
+      if (UNI) state.uniSorted++;
       if (!state.hinted){
         state.hinted = true;
         hintEl.classList.add('gone');
@@ -1692,7 +1700,7 @@
     const before = activeColorCount(state.level);
     state.level++;
     const after = activeColorCount(state.level);
-    if (UNI && after > before) uniGiftPending = COLORS[after - 1].id;
+    if (UNI && after > before) state.uniGift = COLORS[after - 1].id;
     let extra = '';
     let said = 'Tray sorted. Pour another scoop when ready.';
     if (after > before){
@@ -2044,9 +2052,12 @@
     const zone = document.createElement('div');
     zone.className = 'uni-well presort-zone';
     zone.style.height = 'calc(' + PRESORT_Y + '% - 5px)';
-    // The whisper only appears while pre-sort has never held a bead —
-    // a restored save with beads up here means she already knows.
-    if (!(Array.isArray(state.tray) && state.tray.some(t => t.y < PRESORT_Y))){
+    // The whisper appears until pre-sort has held a bead, then never
+    // again (persisted, like the tray hint). A restored save with beads
+    // already up here means she already knows.
+    if (Array.isArray(state.tray) && state.tray.some(t => t.y < PRESORT_Y))
+      state.presortHinted = true;
+    if (!state.presortHinted){
       presortHintEl = document.createElement('span');
       presortHintEl.className = 'presort-hint';
       presortHintEl.textContent = 'set beads aside here';
@@ -2095,7 +2106,12 @@
   if (Array.isArray(state.tray) && state.tray.length){
     state.tray.forEach((t, i) => {
       const col = COLORS.find(c => c.id === colorOf(t.id)) || COLORS[0];
-      makeBead(col, t.x, t.y, i, true, t.id);
+      // Graduation shim: one-well-era saves scattered from y=14, so a
+      // restored bead can straddle the new ridge — roll it off to the
+      // nearer well once; settleOnTray keeps it honest from then on.
+      let y = t.y;
+      if (Math.abs(y - PRESORT_Y) < 5) y = y < PRESORT_Y ? PRESORT_Y - 5 : PRESORT_Y + 5;
+      makeBead(col, t.x, y, i, true, t.id);
     });
     updatePourUI();
   } else {

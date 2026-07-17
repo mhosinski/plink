@@ -213,6 +213,39 @@ check((computePerfectScoop() || []).length === 4,
   'perfect: color-uniform jar with mixed shapes completes (7+1 -> +4)');
 trayBeads = [];
 
+// ---- computeScoopHonest: honest randomness, gifts never whiff ----
+{
+  trayBeads = [];
+  state = { level: 1, uniGift: null };
+  let bag = computeScoopHonest();
+  check(bag.length === 18, 'honest: bag is exactly a scoop (18 at level 1)');
+  const pool = new Set(COLORS.slice(0, 4).map(c => c.id));
+  check(bag.every(id => pool.has(id)), 'honest: only unlocked colors dealt');
+  state = { level: 1, uniGift: 'c3' };
+  bag = computeScoopHonest();
+  check(bag.includes('c3') && state.uniGift === null, 'honest: pending gift always dealt, then cleared');
+  state = { level: 1, uniGift: 'c9' }; // out-of-pool gift (corrupt/future save)
+  bag = computeScoopHonest();
+  check(!bag.includes('c9') && state.uniGift === 'c9' && bag.length === 18,
+    'honest: out-of-pool gift held for later, bag unharmed');
+  const seenH = new Set();
+  state = { level: 9, uniGift: null };
+  for (let t = 0; t < 200; t++) computeScoopHonest().forEach(id => seenH.add(id));
+  check(seenH.size === 10, `honest: all 10 colors appear across many scoops (got ${seenH.size})`);
+}
+
+// ---- rollUniNextPerfect: the pours-era rhythm in sorted-bead units ----
+{
+  state = { level: 1, uniSorted: 100 }; // scoopBase() = 18 at level 1
+  let lo = Infinity, hi = -Infinity;
+  for (let t = 0; t < 500; t++){
+    const v = rollUniNextPerfect();
+    lo = Math.min(lo, v); hi = Math.max(hi, v);
+  }
+  check(lo >= 100 + 3 * 18 && hi <= 100 + 8 * 18,
+    'cadence: next perfect lands 3-8 scoops of sorted beads ahead');
+}
+
 // ---- backfillShelf: synthesized history for counter-only shelves ----
 const bf = backfillShelf(14, 8, 1234);
 check(bf.length === 14, 'backfill: one entry per missing jar');
