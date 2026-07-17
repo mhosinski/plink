@@ -279,7 +279,7 @@
   /* ---------- footer ---------- */
   .statsbar{display:flex; flex-direction:column; align-items:center;}
   .stats{
-    background:none; border:0; cursor:pointer;
+    margin:0;
     width:100%;
     padding:10px 6px 2px;
     text-align:center;
@@ -287,6 +287,27 @@
     letter-spacing:.08em;
     color:var(--cream-dim);
     font-variant-numeric:tabular-nums;
+  }
+  /* one tap to anywhere: the tabs stay visible over every page (they
+     replace any close button), floating above the shelf/catalog overlay */
+  .tabs{
+    display:flex; gap:10px; justify-content:center;
+    padding:8px 0 2px;
+    position:relative; z-index:70;
+  }
+  .tab{
+    font-family:var(--marker); font-size:16px;
+    padding:7px 20px 9px;
+    border:0; cursor:pointer;
+    color:var(--cream-dim);
+    background:rgba(255,255,255,.08);
+    clip-path:polygon(2% 12%, 5% 0%, 97% 4%, 100% 22%, 98% 88%, 95% 100%, 3% 97%, 0% 78%);
+    transition:background .15s, color .15s;
+  }
+  .tab.active{
+    background:var(--tape);
+    color:var(--tape-ink);
+    box-shadow:0 3px 6px rgba(0,0,0,.3);
   }
   .stats b{color:var(--cream); font-weight:800;}
   .backup{
@@ -306,7 +327,8 @@
     position:fixed; inset:0; z-index:60;
     display:flex; flex-direction:column;
     max-width:520px; margin:0 auto;
-    padding:calc(10px + env(safe-area-inset-top)) 14px calc(8px + env(safe-area-inset-bottom));
+    /* bottom padding clears the floating tab row */
+    padding:calc(10px + env(safe-area-inset-top)) 14px calc(58px + env(safe-area-inset-bottom));
     background:
       radial-gradient(120% 90% at 50% 0%, rgba(255,220,170,.10), transparent 60%),
       radial-gradient(140% 120% at 50% 110%, rgba(0,0,0,.38), transparent 55%),
@@ -326,12 +348,14 @@
     color:var(--cream);
     text-shadow:0 1px 3px rgba(0,0,0,.35);
   }
-  .shelf-close{
-    background:none; border:0; cursor:pointer;
-    color:var(--cream-dim); font-size:32px; line-height:1;
-    padding:2px 10px 6px;
+  .tin{
+    display:flex; align-items:center; gap:7px; margin:0;
+    font-family:var(--marker); font-size:20px;
+    color:var(--cream);
+    text-shadow:0 1px 3px rgba(0,0,0,.35);
   }
-  .shelf-close:hover{color:var(--cream);}
+  .tin[hidden]{display:none;}
+  .btn-icon{filter:drop-shadow(0 1px 2px rgba(0,0,0,.35));}
   .shelf-scroll{flex:1; overflow-y:auto; min-height:0; padding:4px 2px 14px;}
   .shelf-group-label{
     margin:16px 4px 10px;
@@ -391,15 +415,55 @@
   }
   .shelf-util{padding-top:6px;}
 
+  /* ---------- the catalog ---------- */
+  .catalog{flex:1; overflow-y:auto; min-height:0; padding:8px 2px;}
+  .catalog[hidden],.shelf-scroll[hidden],.shelf-util[hidden]{display:none;}
+  .cat-items{
+    display:grid; grid-template-columns:repeat(3, 1fr);
+    gap:12px; max-width:400px; margin:6px auto 0;
+  }
+  /* felt swatches, not paper: beads present best on felt — the tray is
+     the proof — so the catalog is a sample board */
+  .cat-item{
+    position:relative;
+    aspect-ratio:1;
+    display:flex; align-items:center; justify-content:center;
+    padding:10px 8px 22px;
+    border:0; cursor:pointer;
+    border-radius:12px;
+    font-family:var(--marker); font-size:16px; color:var(--cream);
+    background:
+      radial-gradient(90% 70% at 30% 25%, rgba(255,255,255,.05), transparent 60%),
+      var(--felt);
+    box-shadow:
+      inset 0 2px 8px rgba(0,0,0,.35),
+      inset 0 -1px 3px rgba(255,255,255,.05),
+      0 3px 7px rgba(0,0,0,.3);
+  }
+  .cat-item .prev{position:relative; width:64px; height:64px;}
+  .cat-item .cat-price{
+    position:absolute; right:10px; bottom:8px;
+    display:flex; align-items:center; gap:5px;
+    font-size:14.5px; white-space:nowrap;
+    text-shadow:0 1px 2px rgba(0,0,0,.4);
+  }
+  .cat-item.owned{cursor:default;}
+  .cat-item.confirm{outline:2px dashed var(--cream); outline-offset:-7px;}
+  .cat-item.no{animation:jiggle .5s ease;}
+  .cat-note{
+    margin:20px auto 0; max-width:340px; text-align:center;
+    font-size:11.5px; color:var(--cream-dim); line-height:1.8;
+  }
+
   /* ---------- bead faces ---------- */
   /* Every bead is an inline SVG face (see shapeFace): the bevel follows
      each silhouette's own contour, and round is simply the fourth shape.
      Host elements keep geometry and the full round touch target. */
-  .bead .face,.mini .face,.sbead .face{
+  .bead .face,.mini .face,.sbead .face,.prev .face{
     position:absolute; inset:0; width:100%; height:100%;
     pointer-events:none;
   }
-  .bead .face{filter:drop-shadow(0 2px 3px rgba(0,0,0,.35));}
+  .bead .face,.prev .face{filter:drop-shadow(0 2px 3px rgba(0,0,0,.35));}
   .mini .face,.sbead .face{filter:drop-shadow(0 1px 1px rgba(0,0,0,.3));}
 
   .sr{
@@ -408,7 +472,7 @@
   }
 
   @media (prefers-reduced-motion: reduce){
-    .bead.landing,.jar.pop,.jar.jiggle .glass,.mini.drop-in,.spark,.shelf-view{animation:none;}
+    .bead.landing,.jar.pop,.jar.jiggle .glass,.mini.drop-in,.spark,.shelf-view,.cat-item.no{animation:none;}
     .jar,.glass,.lid,.tape-btn,.hint,.mini{transition:none;}
   }
   @media (min-height:760px){
@@ -443,20 +507,28 @@
   </div>
 
   <footer class="statsbar">
-    <button class="stats" id="stats" aria-haspopup="dialog" aria-controls="shelfView"
-      aria-label="Progress. Press to look up at the shelf."></button>
+    <p class="stats" id="stats"></p>
   </footer>
+  <nav class="tabs" aria-label="Pages">
+    <button class="tab active" id="tabTray" aria-current="page">tray</button>
+    <button class="tab" id="tabShelf">shelf</button>
+    <button class="tab" id="tabCatalog">catalog</button>
+  </nav>
   <div class="sr" aria-live="polite" id="sr"></div>
 </main>
 
 <div class="shelf-view" id="shelfView" hidden role="dialog" aria-modal="true"
   aria-label="The shelf: every jar ever filled">
   <div class="shelf-head">
-    <h2 class="shelf-title">the shelf</h2>
-    <button class="shelf-close" id="shelfClose" aria-label="Back to the tray">&times;</button>
+    <h2 class="shelf-title" id="shelfTitle">the shelf</h2>
+    <p class="tin" id="tinLine" hidden></p>
   </div>
   <div class="shelf-scroll" id="shelfScroll"></div>
-  <div class="shelf-util">
+  <div class="catalog" id="catalogPage" hidden>
+    <div class="cat-items" id="catItems"></div>
+    <p class="cat-note">every shelved jar earns a button · a clean slate earns ten<br>a jar of twelve matching shapes earns a little extra</p>
+  </div>
+  <div class="shelf-util" id="shelfUtil">
     <div class="backup" id="backupPanel">
       <button class="tape-btn tape-sm" id="copySaveBtn">copy backup</button>
       <button class="tape-btn tape-sm" id="restoreSaveBtn">restore backup</button>
@@ -565,7 +637,10 @@
   if (Array.isArray(state.tray))
     state.tray.forEach(t => { t.id = normalizeColorId(t.id); });
   if (Array.isArray(state.shelf))
-    state.shelf.forEach(s => { s.c = normalizeColorId(s.c); });
+    state.shelf.forEach(s => {
+      s.c = normalizeColorId(s.c);
+      if (Array.isArray(s.b)) s.b = s.b.map(normalizeColorId);
+    });
   state.buttons = seedButtons(state);
   state.owned = (Array.isArray(state.owned) ? state.owned : []).filter(s => SHAPES.has(s));
   if (!state.nextPerfect) state.nextPerfect = rollNextPerfect();
@@ -903,6 +978,16 @@
   }
   function colorOf(id){ return String(id).split('~')[0]; }
   function shapeOf(id){ return String(id).split('~')[1] || 'round'; }
+  const SHAPE_PRICE = 50;   // flat, every silhouette in the catalog
+  const SHAPE_RATE = 1 / 6; // how often a dealt bead wears an owned shape
+  // Dresses a dealt bag in owned silhouettes. A decoration layer only:
+  // colors are untouched, so the composer's math never knows shapes exist.
+  // rnd is injected so the gates can steer it.
+  function decorateBag(bag, owned, rnd){
+    if (!owned || !owned.length) return bag;
+    return bag.map(id =>
+      rnd() < SHAPE_RATE ? id + '~' + owned[Math.floor(rnd() * owned.length)] : id);
+  }
   const BUTTONS_MATCH_BONUS = 2; // extra for a silhouette-matched jar (tunable)
   // A full jar whose twelve beads all share a purchased silhouette earns
   // a little extra — quietly, never announced as a number (plink-37v.2).
@@ -1044,6 +1129,7 @@
     }
     if (!bag) bag = computeScoop();
     if (!bag){ showPourUI(); return; }
+    bag = decorateBag(bag, state.owned, Math.random);
     state.pourCount++;
     if (dealtPerfect) state.nextPerfect = rollNextPerfect();
     centerStack.hidden = true;
@@ -1250,12 +1336,18 @@
     tapShelve();
     announce('Jar ' + (jarIndex + 1) + ' is full! Shelved.');
     setTimeout(() => {
-      // jars cap color-uniform; the shelf entry keeps the full composite
-      // id only when all twelve beads share the shape too (a matched jar
-      // is worth remembering as matched — the shelf can show it off)
+      // jars cap color-uniform; the shelf entry's c keeps the full
+      // composite id only when all twelve beads share the shape (a
+      // matched jar is worth showing off), while b records the exact
+      // per-bead contents — history can never be reconstructed later,
+      // and a future jar-detail view will want the true mix
       const jarBeads = state.jars[jarIndex];
       const matched = jarBeads.every(id => id === jarBeads[0]);
-      state.shelf.push({ c: matched ? jarBeads[0] : colorOf(jarBeads[0]), t: localDate() });
+      state.shelf.push({
+        c: matched ? jarBeads[0] : colorOf(jarBeads[0]),
+        t: localDate(),
+        b: jarBeads.slice(),
+      });
       state.jars[jarIndex] = [];
       state.shelved++;
       state.buttons += BUTTONS_PER_JAR + bonus; // silent — the balance lives at the catalog
@@ -1515,7 +1607,6 @@
   // housekeeping both belong off the fidget.
   const shelfView = document.getElementById('shelfView');
   const shelfScroll = document.getElementById('shelfScroll');
-  const shelfClose = document.getElementById('shelfClose');
   const backupNote = document.getElementById('backupNote');
   const NOTE_DEFAULT = backupNote.textContent;
   const MONTHS = ['january','february','march','april','may','june',
@@ -1579,24 +1670,131 @@
       }
     });
   }
-  function openShelf(){
+  addEventListener('resize', () => { if (!shelfScroll.hidden && !shelfView.hidden) renderShelf(); });
+
+  /* ---------- the catalog: buttons buy silhouettes ---------- */
+  // The only place the balance ever appears — a watched number becomes a
+  // score, so the tin lives here and nowhere else. Purchases are final
+  // and regret-free; not affording something is a soft physical refusal
+  // (a jiggle, like a full jar), never a lecture.
+  const catalogPage = document.getElementById('catalogPage');
+  const shelfTitle = document.getElementById('shelfTitle');
+  const shelfUtil = document.getElementById('shelfUtil');
+  const tinLine = document.getElementById('tinLine');
+  const catItems = document.getElementById('catItems');
+  const CATALOG = [
+    { shape: 'cube', name: 'cubes', c: 'jade' },
+    { shape: 'heart', name: 'hearts', c: 'cherry' },
+    { shape: 'star', name: 'stars', c: 'honey' },
+  ];
+  // The currency icon: a red sewing button — a crafter's coin. Distinct
+  // from beads at a glance (four thread holes, not one center bore).
+  // Colors are cherry's own palette, so it sits inside the bead family.
+  function buttonIcon(size){
+    return '<svg class="btn-icon" viewBox="0 0 24 24" aria-hidden="true"' +
+      ' style="width:' + size + 'px;height:' + size + 'px">' +
+      '<circle cx="12" cy="12" r="10" fill="#e0475c"/>' +
+      '<circle cx="9.4" cy="8.6" r="5.4" fill="#ee9aa5" opacity=".4"/>' +
+      '<circle cx="12" cy="12" r="10" fill="none" stroke="#822935" stroke-width="1.3"/>' +
+      '<circle cx="12" cy="12" r="7" fill="none" stroke="#822935" stroke-width="1.4" opacity=".35"/>' +
+      '<circle cx="9.5" cy="9.5" r="1.5" fill="rgba(40,8,12,.85)"/>' +
+      '<circle cx="14.5" cy="9.5" r="1.5" fill="rgba(40,8,12,.85)"/>' +
+      '<circle cx="9.5" cy="14.5" r="1.5" fill="rgba(40,8,12,.85)"/>' +
+      '<circle cx="14.5" cy="14.5" r="1.5" fill="rgba(40,8,12,.85)"/>' +
+      '</svg>';
+  }
+  // Owned marker: a check stitched in cream thread — a sample you own,
+  // not a menu item that's gone grey.
+  function stitchCheck(size){
+    return '<svg aria-hidden="true" viewBox="0 0 24 24"' +
+      ' style="width:' + size + 'px;height:' + size + 'px">' +
+      '<path d="M4.5,13L10,18.5L19.5,6.5" fill="none" stroke="rgba(0,0,0,.4)"' +
+      ' stroke-width="3.4" stroke-linecap="round" stroke-linejoin="round"' +
+      ' stroke-dasharray="3.4 2.2" transform="translate(0,0.8)"/>' +
+      '<path d="M4.5,13L10,18.5L19.5,6.5" fill="none" stroke="#f3e7d3"' +
+      ' stroke-width="3" stroke-linecap="round" stroke-linejoin="round"' +
+      ' stroke-dasharray="3.4 2.2"/>' +
+      '</svg>';
+  }
+  let confirming = null, confirmTimer = 0;
+  function renderCatalog(){
+    tinLine.innerHTML = '<span>' + state.buttons + '</span>' + buttonIcon(27);
+    tinLine.setAttribute('aria-label', state.buttons + ' buttons in the tin');
+    catItems.innerHTML = '';
+    CATALOG.forEach(item => {
+      const col = COLORS.find(c => c.id === item.c) || COLORS[0];
+      const owned = state.owned.includes(item.shape);
+      const b = document.createElement('button');
+      b.className = 'cat-item' + (owned ? ' owned' : '') +
+        (confirming === item.shape ? ' confirm' : '');
+      b.innerHTML = '<span class="prev">' + shapeFace(item.shape, col) + '</span>' +
+        '<span class="cat-price">' + (owned ? stitchCheck(21)
+          : confirming === item.shape ? 'sure?'
+          : '<span>' + SHAPE_PRICE + '</span>' + buttonIcon(13)) + '</span>';
+      b.setAttribute('aria-label', item.name + (owned ? ', owned' :
+        ', ' + SHAPE_PRICE + ' buttons' +
+        (confirming === item.shape ? '. Press again to buy.' : '')));
+      b.addEventListener('click', () => catalogTap(item, b));
+      catItems.appendChild(b);
+    });
+  }
+  function catalogTap(item, el){
+    if (state.owned.includes(item.shape)) return;
+    if (state.buttons < SHAPE_PRICE){ // can't hand over buttons you don't have
+      if (!RM){ el.classList.remove('no'); void el.offsetWidth; el.classList.add('no'); }
+      announce('Not enough buttons yet.');
+      return;
+    }
+    if (confirming !== item.shape){
+      confirming = item.shape;
+      clearTimeout(confirmTimer);
+      confirmTimer = setTimeout(() => { confirming = null; renderCatalog(); }, 4000);
+      renderCatalog();
+      return;
+    }
+    clearTimeout(confirmTimer);
+    confirming = null;
+    state.buttons -= SHAPE_PRICE;
+    state.owned.push(item.shape);
+    save();
+    clearChime();
+    announce('Bought ' + item.name + '. New beads will arrive in future scoops.');
+    renderCatalog();
+  }
+  /* ---------- pages: tray · shelf · catalog, one tap each ---------- */
+  const TABS = {
+    tray: document.getElementById('tabTray'),
+    shelf: document.getElementById('tabShelf'),
+    catalog: document.getElementById('tabCatalog'),
+  };
+  function showPage(page){
+    for (const name in TABS){
+      TABS[name].classList.toggle('active', name === page);
+      if (name === page) TABS[name].setAttribute('aria-current', 'page');
+      else TABS[name].removeAttribute('aria-current');
+    }
+    confirming = null;
+    if (page === 'tray'){ shelfView.hidden = true; return; }
+    const cat = page === 'catalog';
     shelfView.hidden = false; // visible first: renderShelf measures width
-    renderShelf();
-    backupNote.textContent = NOTE_DEFAULT;
-    document.getElementById('buildNote').textContent =
-      'this copy deployed ' + document.lastModified;
-    shelfScroll.scrollTop = shelfScroll.scrollHeight; // newest jars greet you
-    shelfClose.focus();
+    catalogPage.hidden = !cat;
+    shelfScroll.hidden = cat;
+    shelfUtil.hidden = cat;
+    tinLine.hidden = !cat;
+    shelfTitle.textContent = cat ? 'the catalog' : 'the shelf';
+    if (cat){
+      renderCatalog();
+    } else {
+      renderShelf();
+      backupNote.textContent = NOTE_DEFAULT;
+      document.getElementById('buildNote').textContent =
+        'this copy deployed ' + document.lastModified;
+      shelfScroll.scrollTop = shelfScroll.scrollHeight; // newest jars greet you
+    }
   }
-  function closeShelf(){
-    shelfView.hidden = true;
-    statsEl.focus();
-  }
-  statsEl.addEventListener('click', openShelf);
-  shelfClose.addEventListener('click', closeShelf);
-  addEventListener('resize', () => { if (!shelfView.hidden) renderShelf(); });
+  for (const name in TABS) TABS[name].addEventListener('click', () => showPage(name));
   document.addEventListener('keydown', ev => {
-    if (ev.key === 'Escape' && !shelfView.hidden) closeShelf();
+    if (ev.key === 'Escape' && !shelfView.hidden) showPage('tray');
   });
   document.getElementById('copySaveBtn').addEventListener('click', async () => {
     save();
@@ -1642,8 +1840,13 @@
         { c: 'cherry~star', t: localDate() },
         { c: 'jade~heart', t: localDate() },
         { c: 'cornflower~cube', t: localDate() });
-      openShelf();
+      showPage('shelf');
       state.shelf = real; // rendered, never saved
+    };
+    window.plinkButtons = (n = 100) => {
+      state.buttons += n;
+      save();
+      if (!catalogPage.hidden) renderCatalog();
     };
   }
 
@@ -1671,6 +1874,10 @@
   // every shape in four colors, plus a matched dozen of star cherries so
   // a matched cap (bigger sparkle, bonus, shelf silhouette) can be tested
   // end to end. Skipped while shaped beads are already on the tray.
+  if (PREVIEW && location.search.includes('preview') && state.buttons < 200){
+    state.buttons = 200; // a full tin for review shopping (no console on a phone)
+    save();
+  }
   if (PREVIEW && location.search.includes('preview') &&
       !Array.from(tray.querySelectorAll('.bead')).some(b => shapeOf(b.dataset.color) !== 'round')){
     const deal = [];

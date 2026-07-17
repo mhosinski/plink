@@ -151,6 +151,19 @@ check(matchBonus([...Array(11).fill('c0~star'), 'c0']) === 0, 'bonus: one round 
 check(matchBonus([...Array(6).fill('c0~star'), ...Array(6).fill('c0~heart')]) === 0, 'bonus: mixed silhouettes earn nothing');
 check(matchBonus([]) === 0, 'bonus: empty jar earns nothing');
 
+// ---- decorateBag: shapes dress the scoop, colors stay the truth ----
+{
+  const bag = ['c0', 'c1', 'c2', 'c0'];
+  check(decorateBag(bag, [], Math.random) === bag, 'decorate: owning nothing changes nothing');
+  const all = decorateBag(bag, ['star'], () => 0); // always decorate, pick first
+  check(all.every((id, i) => id === bag[i] + '~star'), 'decorate: rnd floor dresses every bead in the owned shape');
+  check(all.every((id, i) => colorOf(id) === bag[i]), 'decorate: colors survive decoration untouched');
+  check(decorateBag(bag, ['star'], () => 0.99).join() === bag.join(), 'decorate: rnd ceiling dresses nothing');
+  const seq = [0, 0.9, 0.1, 0.99, 0.05, 0.4]; let si = 0;
+  const some = decorateBag(bag, ['cube', 'heart'], () => seq[si++ % seq.length]);
+  check(some.every(id => ['round', 'cube', 'heart'].includes(shapeOf(id))), 'decorate: only owned shapes ever appear');
+}
+
 // ---- computePerfectScoop: finish every color in play, leftovers too ----
 trayBeads = [];
 state = { level: 5, jars: [Array(7).fill('c0'), Array(4).fill('c1'), [], Array(11).fill('c0'), []] };
