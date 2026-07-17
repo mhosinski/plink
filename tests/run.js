@@ -15,6 +15,39 @@ const src = fs.readFileSync(path.join(__dirname, '..', 'index.html'), 'utf8');
 const js = src.match(/<script>([\s\S]*)<\/script>/)[1];
 new Function(js); // throws on syntax error
 
+// Boot smoke: the whole script must also INITIALIZE without throwing — a
+// declaration-order/TDZ mistake bricks the game on load, invisible to the
+// syntax check (caught live 2026-07-16: SHAPE_PATHS declared below the
+// jar-restore loop that called it). Browser APIs are one recursive
+// permissive proxy; only what boot genuinely branches on is stubbed real.
+{
+  const p = new Proxy(function () {}, {
+    get(t, prop){
+      if (prop === Symbol.toPrimitive) return () => 0;
+      return p;
+    },
+    set(){ return true; },
+    apply(){ return p; },
+    construct(){ return p; },
+  });
+  const boot = new Function(
+    'document', 'window', 'localStorage', 'location', 'navigator',
+    'matchMedia', 'setTimeout', 'setInterval', 'requestAnimationFrame',
+    'addEventListener', 'console', js);
+  try {
+    boot(
+      p, {}, { getItem: () => null, setItem(){}, removeItem(){} },
+      { hostname: 'gate', search: '' }, {},
+      () => ({ matches: false }), () => 0, () => 0, () => 0,
+      () => 0, { log(){}, warn(){}, error(){} });
+    console.log('ok   boot: script initializes without throwing');
+  } catch (e) {
+    console.log('FAIL boot: script threw during initialization: ' + e.message);
+    process.exitCode = 1;
+    throw e;
+  }
+}
+
 // PWA satellites: manifest parses with required fields; sw parses; all
 // referenced assets exist; index.html wires them up.
 const root = path.join(__dirname, '..');

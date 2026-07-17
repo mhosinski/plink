@@ -148,17 +148,8 @@
   .fill{position:absolute; inset:6px 5px 5px;}
   .mini{
     position:absolute;
-    width:13px; height:13px; border-radius:50%;
+    width:13px; height:13px;
     transition:left .25s ease, bottom .25s ease;
-    background:radial-gradient(circle at 32% 30%, var(--hi), var(--c) 52%, var(--lo));
-    box-shadow:0 1px 1px rgba(0,0,0,.3);
-  }
-  .mini::after{
-    content:""; position:absolute; left:50%; top:50%;
-    width:38%; height:38%; transform:translate(-50%,-50%);
-    border-radius:50%;
-    background:rgba(20,10,5,.55);
-    box-shadow:inset 0 1px 1px rgba(0,0,0,.5);
   }
   /* The flight animation IS the arrival — the mini must appear exactly
      where the bead landed, so its entrance is a scale pop with zero
@@ -219,26 +210,10 @@
     margin:-21px 0 0 -21px;
     padding:0; border:0;
     border-radius:50%;
-    background:radial-gradient(circle at 32% 28%, var(--hi), var(--c) 50%, var(--lo) 100%);
-    box-shadow:0 2px 4px rgba(0,0,0,.35), inset 0 -2px 4px rgba(0,0,0,.18);
+    background:none; /* the art is the SVG face inside */
     cursor:grab;
     touch-action:none;
     z-index:10;
-  }
-  .bead::before{ /* gloss */
-    content:""; position:absolute; left:16%; top:10%;
-    width:30%; height:22%;
-    border-radius:50%;
-    background:rgba(255,255,255,.55);
-    filter:blur(1px);
-    transform:rotate(-25deg);
-  }
-  .bead::after{ /* hole */
-    content:""; position:absolute; left:50%; top:50%;
-    width:36%; height:36%; transform:translate(-50%,-50%);
-    border-radius:50%;
-    background:radial-gradient(circle at 42% 36%, rgba(60,30,20,.6), rgba(15,8,5,.8));
-    box-shadow:inset 0 2px 3px rgba(0,0,0,.6), 0 1px 1px rgba(255,255,255,.18);
   }
   .bead.drag{cursor:grabbing; z-index:100;}
   .bead.held{
@@ -399,15 +374,7 @@
   .sfill{position:absolute; inset:4px 3px 3px;}
   .sbead{
     position:absolute;
-    width:7.5px; height:7.5px; border-radius:50%;
-    background:radial-gradient(circle at 32% 30%, var(--hi), var(--c) 52%, var(--lo));
-    box-shadow:0 1px 1px rgba(0,0,0,.3);
-  }
-  .sbead::after{
-    content:''; position:absolute; left:50%; top:50%;
-    width:38%; height:38%; transform:translate(-50%,-50%);
-    border-radius:50%;
-    background:rgba(20,10,5,.55);
+    width:7.5px; height:7.5px;
   }
   .sjar .slid{
     position:absolute; left:-3px; right:-3px; top:-6px; height:8px;
@@ -424,15 +391,14 @@
   }
   .shelf-util{padding-top:6px;}
 
-  /* ---------- bead silhouettes (purchased shapes) ---------- */
-  /* Shaped beads render as inline SVG faces: an underside layer in the
-     shadow color with the gradient face offset atop it, so the bevel
-     follows each silhouette's own contour instead of cropping a ball's
-     shading flat. Paths are drawn to the round bead's visual mass. The
-     host element keeps its full round touch target. */
-  .shaped{background:none; box-shadow:none;} /* declared after .bead/.mini/.sbead, so it wins */
-  .shaped::before,.shaped::after{display:none;}
-  .shaped .face{position:absolute; inset:0; width:100%; height:100%; pointer-events:none;}
+  /* ---------- bead faces ---------- */
+  /* Every bead is an inline SVG face (see shapeFace): the bevel follows
+     each silhouette's own contour, and round is simply the fourth shape.
+     Host elements keep geometry and the full round touch target. */
+  .bead .face,.mini .face,.sbead .face{
+    position:absolute; inset:0; width:100%; height:100%;
+    pointer-events:none;
+  }
   .bead .face{filter:drop-shadow(0 2px 3px rgba(0,0,0,.35));}
   .mini .face,.sbead .face{filter:drop-shadow(0 1px 1px rgba(0,0,0,.3));}
 
@@ -748,6 +714,39 @@
   }
   function clearChime(){ tone(659.25, { vol:0.14 }); tone(880, { delay:0.12, vol:0.14 }); }
 
+  /* ---------- bead faces ---------- */
+  // Every bead — round included — wears the same SVG face: an underside
+  // layer in the shadow color with the gradient face offset atop it, a
+  // gloss, and the hole. One construction means the four shapes can only
+  // ever read as siblings. Paths are drawn to equal visual mass, sized
+  // for the round-join stroke below that softens every point and lobe
+  // (craft beads never have knife edges). Declared before the jar
+  // section: addMini renders faces while restoring jars at startup.
+  const SHAPE_PATHS = {
+    round: 'M2.6,12A9.4,9.4,0,1,1,21.4,12A9.4,9.4,0,1,1,2.6,12Z',
+    star: 'M12,1.2L15.41,7.31L22.27,8.66L17.52,13.79L18.35,20.74L12,17.8L5.65,20.74L6.48,13.79L1.73,8.66L8.59,7.31Z',
+    heart: 'M12,21.1C8.7,18.3,2.0,13.5,2.0,8.5C2.0,5.1,4.6,2.9,7.4,2.9C9.4,2.9,11.1,4.1,12,5.8C12.9,4.1,14.6,2.9,16.6,2.9C19.4,2.9,22.0,5.1,22.0,8.5C22.0,13.5,15.3,18.3,12,21.1Z',
+    cube: 'M8,3.6L16,3.6Q20.4,3.6,20.4,8L20.4,16Q20.4,20.4,16,20.4L8,20.4Q3.6,20.4,3.6,16L3.6,8Q3.6,3.6,8,3.6Z',
+  };
+  let faceSeq = 0;
+  function shapeFace(shape, col){
+    const d = SHAPE_PATHS[shape] || SHAPE_PATHS.round;
+    const g = 'bf' + (++faceSeq); // gradient ids must be unique per instance
+    const soft = 'stroke-width="2" stroke-linejoin="round" stroke-linecap="round" paint-order="stroke"';
+    return '<svg class="face" viewBox="0 0 24 24" aria-hidden="true">' +
+      '<defs><radialGradient id="' + g + '" cx="34%" cy="30%" r="78%">' +
+      '<stop offset="0%" stop-color="' + col.hi + '"/>' +
+      '<stop offset="52%" stop-color="' + col.c + '"/>' +
+      '<stop offset="100%" stop-color="' + col.lo + '"/></radialGradient></defs>' +
+      '<path d="' + d + '" fill="' + col.lo + '" stroke="' + col.lo + '" ' + soft + '/>' +
+      '<path d="' + d + '" transform="translate(0.07,-0.13) scale(0.965)" fill="url(#' + g +
+        ')" stroke="url(#' + g + ')" ' + soft + '/>' +
+      '<ellipse cx="8.8" cy="7.4" rx="2.5" ry="1.6" transform="rotate(-25 8.8 7.4)" fill="rgba(255,255,255,.5)"/>' +
+      '<circle cx="12" cy="12" r="4.3" fill="rgba(15,8,5,.8)"/>' +
+      '<circle cx="11.5" cy="11.4" r="3.3" fill="rgba(60,30,20,.6)"/>' +
+      '</svg>';
+  }
+
   /* ---------- jars ---------- */
   const jarEls = [];
   // Beads mid-flight to a jar hold their slot before state.jars sees them;
@@ -802,12 +801,8 @@
   function addMini(jarIndex, col, index, animate, shape = 'round'){
     const fill = jarEls[jarIndex].querySelector('.fill');
     const m = document.createElement('span');
-    m.className = 'mini' + (animate && !RM ? ' drop-in' : '') +
-      (shape !== 'round' ? ' shaped' : '');
-    if (shape !== 'round') m.innerHTML = shapeFace(shape, col);
-    m.style.setProperty('--c', col.c);
-    m.style.setProperty('--hi', col.hi);
-    m.style.setProperty('--lo', col.lo);
+    m.className = 'mini' + (animate && !RM ? ' drop-in' : '');
+    m.innerHTML = shapeFace(shape, col);
     const [x, y] = slotPos(index);
     m.style.left = x + '%';
     m.style.bottom = y + '%';
@@ -851,45 +846,13 @@
   let heldBead = null;
   let pendingSlateExtra = null; // non-null while caps that finish a clean slate are landing
 
-  // Faces for shaped beads. Each path is drawn to roughly the round
-  // bead's visual mass (a circle inscribed in the 24-box), so no shape
-  // reads heavier than its neighbors on the tray.
-  const SHAPE_PATHS = {
-    star: 'M12,0.5L15.5,7.2L22.9,8.5L17.6,13.8L18.8,21.3L12,17.9L5.2,21.3L6.4,13.8L1.1,8.5L8.5,7.2Z',
-    heart: 'M12,21.5C8.6,18.6,1.6,13.6,1.6,8.4C1.6,4.9,4.3,2.6,7.2,2.6C9.3,2.6,11.1,3.8,12,5.6C12.9,3.8,14.7,2.6,16.8,2.6C19.7,2.6,22.4,4.9,22.4,8.4C22.4,13.6,15.4,18.6,12,21.5Z',
-    cube: 'M7.5,2.9L16.5,2.9Q21.1,2.9,21.1,7.5L21.1,16.5Q21.1,21.1,16.5,21.1L7.5,21.1Q2.9,21.1,2.9,16.5L2.9,7.5Q2.9,2.9,7.5,2.9Z',
-  };
-  let faceSeq = 0;
-  function shapeFace(shape, col){
-    const d = SHAPE_PATHS[shape];
-    if (!d) return '';
-    const g = 'bf' + (++faceSeq); // gradient ids must be unique per instance
-    return '<svg class="face" viewBox="0 0 24 24" aria-hidden="true">' +
-      '<defs><radialGradient id="' + g + '" cx="34%" cy="30%" r="78%">' +
-      '<stop offset="0%" stop-color="' + col.hi + '"/>' +
-      '<stop offset="52%" stop-color="' + col.c + '"/>' +
-      '<stop offset="100%" stop-color="' + col.lo + '"/></radialGradient></defs>' +
-      '<path d="' + d + '" fill="' + col.lo + '"/>' +
-      '<path d="' + d + '" transform="translate(0.07,-0.13) scale(0.965)" fill="url(#' + g + ')"/>' +
-      '<ellipse cx="8.8" cy="7.4" rx="2.5" ry="1.6" transform="rotate(-25 8.8 7.4)" fill="rgba(255,255,255,.5)"/>' +
-      '<circle cx="12" cy="12" r="4.3" fill="rgba(15,8,5,.8)"/>' +
-      '<circle cx="11.5" cy="11.4" r="3.3" fill="rgba(60,30,20,.6)"/>' +
-      '</svg>';
-  }
-
   function makeBead(col, xPct, yPct, stagger, fall = true, id = col.id){
     const b = document.createElement('button');
     b.className = 'bead';
     b.dataset.color = id; // full identity, shape included; col paints it
     const shape = shapeOf(id);
-    if (shape !== 'round'){
-      b.classList.add('shaped');
-      b.innerHTML = shapeFace(shape, col);
-    }
+    b.innerHTML = shapeFace(shape, col);
     b.setAttribute('aria-label', (shape !== 'round' ? shape + ' ' : '') + col.name + ' bead');
-    b.style.setProperty('--c', col.c);
-    b.style.setProperty('--hi', col.hi);
-    b.style.setProperty('--lo', col.lo);
     b.style.left = xPct + '%';
     b.style.top = yPct + '%';
     if (!RM && fall){
@@ -1600,13 +1563,12 @@
           // the game's slot grid with deterministic per-jar jitter, so
           // every jar's beads sit a little differently but never reshuffle
           const idx = i + j;
-          const beadCls = 'sbead' + (shape !== 'round' ? ' shaped' : '');
           let beads = '';
           for (let k = 0; k < CAP; k++){
             const x = 12 + (k % 3) * 31 + (((idx * 31 + k * 17) % 7) - 3);
             const y = 3 + Math.floor(k / 3) * 21 + (((idx * 13 + k * 29) % 5) - 2);
-            beads += '<span class="' + beadCls + '" style="left:' + x + '%;bottom:' + y + '%">' +
-              (shape !== 'round' ? shapeFace(shape, col) : '') + '</span>';
+            beads += '<span class="sbead" style="left:' + x + '%;bottom:' + y + '%">' +
+              shapeFace(shape, col) + '</span>';
           }
           jar.innerHTML = '<span class="sglass" style="--c:' + col.c + ';--hi:' + col.hi +
             ';--lo:' + col.lo + '"><span class="sfill">' + beads +
