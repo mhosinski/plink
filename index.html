@@ -682,7 +682,11 @@
   // Pre-sort sits at the TOP — staging before jars, and jars sit above
   // the tray, so lifting a bead up into pre-sort reads correctly.
   const PRESORT_Y = 24;   // % from top the pre-sort well occupies; first knob to retune
-  const PRESORT_CAP = 18; // physical bound on the pre-sort dish; second knob
+  // The dish holds one handful: its bound tracks scoopBase(), so a new
+  // player's dish fits their small scoops (18) and a veteran's fits their
+  // big ones (36) — capacity grows on the same curve as everything else.
+  // (Her feedback 2026-07-18: hit the old fixed 18 doing real pre-sorting.)
+  const presortCap = () => scoopBase();
 
   const tray = document.getElementById('tray');
   const jarsEl = document.getElementById('jars');
@@ -1454,7 +1458,7 @@
       // Pre-sort has a real, physical bound — the honest new wall — so a
       // dish that's already full bounces a new arrival back, same grammar
       // as a full jar.
-      if (!wasPresort && clampedY < PRESORT_Y && presortCount() >= PRESORT_CAP){
+      if (!wasPresort && clampedY < PRESORT_Y && presortCount() >= presortCap()){
         clampedY = PRESORT_Y + Math.max(6, dead);
         tone(150, { vol:0.1, dur:0.12 });
         announce('the pre-sort dish is full');
