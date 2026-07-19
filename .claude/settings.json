@@ -11,5 +11,30 @@
         "matcher": ""
       }
     ]
+  },
+  "permissions": {
+    "allow": [
+      "Bash(bd show *)",
+      "Bash(bd recall *)",
+      "Bash(bd list *)",
+      "Bash(bd ready *)",
+      "Bash(bd prime *)",
+      "Bash(bd search *)",
+      "Bash(bd stats *)",
+      "Bash(bd children *)",
+      "Bash(bd blocked *)",
+      "Bash(bd help *)",
+      "Bash(selene *)",
+      "Bash(stylua --check *)",
+      "Bash(pnpm typecheck)",
+      "Bash(pnpm lint:strict)",
+      "Bash(npm run lint)",
+      "Bash(bd update *)",
+      "Bash(bd create *)",
+      "Bash(bd close *)",
+      "Bash(bd note *)",
+      "Bash(bd remember *)",
+      "Bash(bd dep *)"
+    ]
   }
 }
