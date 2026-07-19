@@ -710,7 +710,9 @@
                 // a grand spill; 0 mirrors nextPerfect's own first-pour rule.
                 uniSorted:0, uniNextPerfect:0,
                 uniGift:null,        // a just-unlocked color the next honest scoop must include
-                presortHinted:false };// the pre-sort whisper has been seen and answered
+                presortHinted:false, // the pre-sort whisper has been seen and answered
+                cleared:false };     // this tray already celebrated; the next pour re-arms it
+                                     // (kills the jar-evict-jar level loop, which predates uni)
   try {
     const raw = localStorage.getItem(KEY);
     if (raw) state = Object.assign(state, JSON.parse(raw));
@@ -1314,6 +1316,8 @@
     });
     if (withSound){ pourSound(bag.length); tapCascade(bag.length); }
     save();
+    state.cleared = false; // a fresh tray can be cleared again
+    save();
     announce('Poured ' + bag.length + ' beads onto the tray.');
   }
 
@@ -1546,7 +1550,7 @@
         if (contents.every(id => colorOf(id) === colorOf(contents[0]))) capJar(jarIndex);
         else jarFullHint(jarIndex);
       }
-      if (UNI ? mixLeft() === 0 : beadsLeft === 0) trayCleared();
+      if ((UNI ? mixLeft() === 0 : beadsLeft === 0) && !state.cleared) trayCleared();
       else updatePourUI();
     };
     if (RM){ settle(); return; }
@@ -1659,6 +1663,7 @@
       }, RM ? 0 : 120 + k * 70);
     });
     state.sorted = Math.max(0, state.sorted - n);
+    if (UNI) state.uniSorted = Math.max(0, state.uniSorted - n); // cadence can't be pumped by re-sorting
     if (!state.hinted2){ state.hinted2 = true; hintEl.classList.add('gone'); }
     centerStack.hidden = true;
     clearedMsg.textContent = '';
@@ -1749,6 +1754,8 @@
   }
 
   function trayCleared(){
+    state.cleared = true; // one celebration per tray — re-jarring an evicted bead earns nothing
+    save();
     clearChime();
     const before = activeColorCount(state.level);
     state.level++;
