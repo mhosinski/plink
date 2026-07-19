@@ -20,7 +20,7 @@
     --felt-deep:#253b34;
     --cream:#f3e7d3;
     --cream-dim:rgba(243,231,211,.55);
-    --tape:#f0e9d8;
+    --tape:#f0e9d8;     /* lit cream: always and only means "active" */
     --tape-ink:#6b5335;
     --round:ui-rounded,"SF Pro Rounded","Hiragino Maru Gothic ProN","Arial Rounded MT Bold","Segoe UI",system-ui,sans-serif;
     --marker:"Marker Felt","Segoe Print","Comic Sans MS",cursive;
@@ -294,7 +294,7 @@
     pointer-events:none; /* only ever text now — never blocks a bead */
   }
   .center-stack[hidden]{display:none;}
-  .pour-bar{display:flex; justify-content:center; padding:12px 0 4px;}
+  .pour-bar{display:flex; justify-content:center; gap:14px; padding:12px 0 4px;}
   .cleared{
     font-size:15px; font-weight:700; letter-spacing:.06em;
     line-height:1.6; text-align:center; max-width:78vw;
@@ -315,24 +315,28 @@
     vertical-align:-1px;
     box-shadow:0 1px 2px rgba(0,0,0,.3);
   }
-  .tape-btn[hidden]{display:none;}
-  .tape-btn{
+  .verb-pill[hidden]{display:none;}
+  /* One control family, hierarchy by weight: small pills up top for
+     utility, big pills down here for the verbs — marker script keeps
+     the verbs in plink's handwriting. Lit cream means active. */
+  .verb-pill{
     font-family:var(--marker);
-    font-size:21px;
-    color:var(--tape-ink);
-    background:var(--tape);
-    border:0;
-    padding:13px 30px 15px;
-    transform:rotate(-2deg);
+    font-size:19px;
+    color:var(--cream);
+    background:rgba(0,0,0,.22);
+    border:1px solid rgba(243,231,211,.28);
+    border-radius:999px;
+    padding:10px 26px 12px;
+    min-height:48px;
     cursor:pointer;
-    box-shadow:0 4px 8px rgba(0,0,0,.35);
-    clip-path:polygon(2% 12%, 5% 0%, 97% 4%, 100% 22%, 98% 88%, 95% 100%, 3% 97%, 0% 78%);
-    opacity:.95;
-    transition:transform .15s;
+    box-shadow:0 3px 6px rgba(0,0,0,.25);
+    transition:background .15s, transform .15s;
   }
-  .tape-btn:hover{transform:rotate(-2deg) scale(1.05);}
-  .tape-btn:active{transform:rotate(-1deg) scale(.97);}
-  .tape-btn.confirm{background:#e6cf8f;} /* armed state, same "sure?" language as the catalog */
+  .verb-pill:hover{background:rgba(0,0,0,.32);}
+  .verb-pill:active{transform:scale(.97); background:rgba(255,255,255,.10);}
+  .verb-pill.confirm{ /* armed: the same lit language as a pressed pill */
+    background:var(--tape); color:var(--tape-ink); border-color:transparent;
+  }
 
   /* The button tin: a small pewter tin on the table edge. It IS the
      catalog entry and the persistent balance — the count sits quietly
@@ -407,7 +411,7 @@
     padding:8px 0 2px;
   }
   .backup[hidden]{display:none;}
-  .tape-sm{font-size:15px; padding:8px 16px 10px;}
+  .verb-sm{font-size:14px; padding:7px 16px 9px; min-height:40px;}
   .backup-note{
     width:100%; margin:4px 0 0;
     text-align:center;
@@ -562,7 +566,7 @@
 
   @media (prefers-reduced-motion: reduce){
     .bead.landing,.jar.pop,.jar.jiggle .glass,.mini.drop-in,.spark,.shelf-view,.cat-item.no{animation:none;}
-    .jar,.glass,.lid,.tape-btn,.hint,.mini{transition:none;}
+    .jar,.glass,.lid,.verb-pill,.hint,.mini{transition:none;}
   }
   @media (min-height:760px){
     .glass{height:86px;}
@@ -598,7 +602,7 @@
   </section>
 
   <div class="pour-bar">
-    <button class="tape-btn" id="pourBtn">pour a scoop</button>
+    <button class="verb-pill" id="pourBtn">pour a scoop</button>
   </div>
 
   <div class="sr" aria-live="polite" id="sr"></div>
@@ -614,8 +618,8 @@
   <div class="shelf-scroll" id="shelfScroll"></div>
   <div class="shelf-util" id="shelfUtil">
     <div class="backup" id="backupPanel">
-      <button class="tape-btn tape-sm" id="copySaveBtn">copy backup</button>
-      <button class="tape-btn tape-sm" id="restoreSaveBtn">restore backup</button>
+      <button class="verb-pill verb-sm" id="copySaveBtn">copy backup</button>
+      <button class="verb-pill verb-sm" id="restoreSaveBtn">restore backup</button>
       <p class="backup-note" id="backupNote">your beads, jars, and shelf as text — paste it somewhere safe, or into another device</p>
       <p class="backup-note" id="buildNote"></p>
     </div>
@@ -2183,7 +2187,7 @@
 
   // plink-uni prototype UI: built entirely in JS, only when UNI is true —
   // no static HTML/CSS ships to normal players. No new scene art (the
-  // hoard-bag revert's lesson): the tip-back button reuses .tape-btn.
+  // hoard-bag revert's lesson): the tip-back button reuses .verb-pill.
   if (UNI){
     tray.classList.add('uni-mode');
     // Two felt wells; the 10px between them is the tray's own wood — the
@@ -2215,7 +2219,7 @@
     // action than a single bead, so it gets the catalog's tap-twice
     // "sure?" confirm rather than firing on the first tap.
     dumpBtn = document.createElement('button');
-    dumpBtn.className = 'tape-btn';
+    dumpBtn.className = 'verb-pill';
     document.querySelector('.pour-bar').appendChild(dumpBtn);
     let dumpConfirming = false, dumpConfirmTimer = 0;
     function renderDumpBtn(){
@@ -2239,6 +2243,9 @@
       dumpMix();
     });
     renderDumpBtn();
+    // 'sure?' is narrower than 'tip back' — pin the pill so arming
+    // doesn't make it flinch
+    dumpBtn.style.minWidth = dumpBtn.offsetWidth + 'px';
   }
 
   // Restore leftover tray beads from the last visit, or pour a fresh scoop.
