@@ -179,7 +179,7 @@
   }
 
   /* ---------- tray ---------- */
-  .tray-wrap{flex:1; display:flex; padding:16px 0 10px; min-height:0;}
+  .tray-wrap{flex:1; display:flex; padding:16px 0 10px; min-height:0; position:relative;}
   .tray{
     position:relative;
     flex:1;
@@ -324,6 +324,63 @@
   .tape-btn:hover{transform:rotate(-2deg) scale(1.05);}
   .tape-btn:active{transform:rotate(-1deg) scale(.97);}
   .tape-btn.confirm{background:#e6cf8f;} /* armed state, same "sure?" language as the catalog */
+
+  /* The button tin: a small pewter tin on the table edge. It IS the
+     catalog entry and the persistent balance — the count sits quietly
+     on the lid (no pulsing, no badges: a tin you own, not a meter that
+     owns you — plink-2q1). */
+  .top-right{display:flex; align-items:center; gap:10px;}
+  .tin-top{ /* .tin supplies the catalog's own count-with-button look */
+    background:none; border:0; padding:4px 0;
+    min-height:44px;
+    cursor:pointer;
+  }
+  .btn-fly{position:fixed; z-index:80; pointer-events:none; line-height:0;}
+
+  /* ---------- the catalog sheet ---------- */
+  .sheet-scrim{
+    position:fixed; inset:0; z-index:70;
+    background:rgba(20,12,6,.45);
+    opacity:0; transition:opacity .25s;
+  }
+  .sheet-scrim.open{opacity:1;}
+  .sheet-scrim[hidden]{display:none;}
+  .sheet{
+    position:fixed; left:0; right:0; bottom:0; z-index:71;
+    max-width:520px; margin:0 auto;
+    max-height:min(78dvh, 78vh);
+    display:flex; flex-direction:column;
+    padding:6px 14px calc(14px + env(safe-area-inset-bottom));
+    border-radius:18px 18px 0 0;
+    background:
+      radial-gradient(120% 90% at 50% 0%, rgba(255,220,170,.10), transparent 60%),
+      repeating-linear-gradient(90deg,
+        var(--wood-1) 0px, var(--wood-2) 46px, var(--wood-1) 47px,
+        var(--wood-2) 90px, var(--wood-3) 91px, var(--wood-1) 138px),
+      var(--wood-2);
+    box-shadow:0 -8px 24px rgba(0,0,0,.45);
+    transform:translateY(105%);
+    transition:transform .28s cubic-bezier(.3,0,.3,1);
+  }
+  .sheet.open{transform:none;}
+  .sheet[hidden]{display:none;}
+  .sheet:focus{outline:none;} /* the dialog takes focus for Escape; the ring belongs on its buttons */
+  .sheet-grip{
+    align-self:center;
+    width:64px; height:26px; margin:2px 0;
+    padding:0; border:0; background:none; cursor:pointer;
+  }
+  .sheet-grip::before{
+    content:''; display:block;
+    width:44px; height:5px; margin:0 auto;
+    border-radius:3px;
+    background:rgba(243,231,211,.4);
+  }
+  .sheet-head{display:flex; align-items:baseline; justify-content:space-between; padding:0 4px 8px;}
+  @media (prefers-reduced-motion: reduce){
+    .sheet{transition:none;}
+    .sheet-scrim{transition:none;}
+  }
 
   /* ---------- footer ---------- */
   .statsbar{display:flex; flex-direction:column; align-items:center;}
@@ -537,7 +594,12 @@
       <h1 class="logo">pl<span class="li">&#305;<span class="dot" id="logoDot"></span></span>nk</h1>
       <p class="tagline">a bead-sorting fidget</p>
     </div>
-    <button class="sound" id="soundBtn" aria-pressed="true" aria-label="Sound on">&#9835; on</button>
+    <div class="top-right">
+      <button class="sound" id="soundBtn" aria-pressed="true" aria-label="Sound on">&#9835; on</button>
+      <!-- the same count-with-button the catalog wears, in the tray's top
+           right corner (Mike's call, 2026-07-18); tapping it opens the catalog -->
+      <button class="tin tin-top" id="tinBtn"></button>
+    </div>
   </header>
 
   <section class="jars" id="jars" aria-label="Jars"></section>
@@ -570,13 +632,8 @@
   aria-label="The shelf: every jar ever filled">
   <div class="shelf-head">
     <h2 class="shelf-title" id="shelfTitle">the shelf</h2>
-    <p class="tin" id="tinLine" hidden></p>
   </div>
   <div class="shelf-scroll" id="shelfScroll"></div>
-  <div class="catalog" id="catalogPage" hidden>
-    <div class="cat-items" id="catItems"></div>
-    <p class="cat-note">every shelved jar earns a button · a clean slate earns ten<br>a jar of twelve matching shapes earns a little extra</p>
-  </div>
   <div class="shelf-util" id="shelfUtil">
     <div class="backup" id="backupPanel">
       <button class="tape-btn tape-sm" id="copySaveBtn">copy backup</button>
@@ -584,6 +641,23 @@
       <p class="backup-note" id="backupNote">your beads, jars, and shelf as text — paste it somewhere safe, or into another device</p>
       <p class="backup-note" id="buildNote"></p>
     </div>
+  </div>
+</div>
+
+<!-- The catalog is an object, not a place: tap the button tin and it
+     opens like a booklet picked up off the table — a sheet you leaf
+     through and put down (plink-4uk / plink-2q1). -->
+<div class="sheet-scrim" id="sheetScrim" hidden></div>
+<div class="sheet" id="catalogSheet" role="dialog" aria-modal="true"
+  aria-label="The catalog" tabindex="-1" hidden>
+  <button class="sheet-grip" id="sheetGrip" aria-label="Put the catalog down"></button>
+  <div class="sheet-head">
+    <h2 class="shelf-title">the catalog</h2>
+    <p class="tin" id="tinLine"></p>
+  </div>
+  <div class="catalog" id="catalogPage">
+    <div class="cat-items" id="catItems"></div>
+    <p class="cat-note">every shelved jar earns a button · a clean slate earns ten<br>a jar of twelve matching shapes earns a little extra</p>
   </div>
 </div>
 
@@ -1536,7 +1610,8 @@
       });
       state.jars[jarIndex] = [];
       state.shelved++;
-      state.buttons += BUTTONS_PER_JAR + bonus; // silent — the balance lives at the catalog
+      state.buttons += BUTTONS_PER_JAR + bonus;
+      flyButtons(BUTTONS_PER_JAR + bonus, jar); // earned buttons visibly land in the tin
       jar.querySelector('.fill').innerHTML = '';
       jar.classList.remove('capped', 'pop');
       delete jar.dataset.busy;
@@ -1721,7 +1796,8 @@
 
   function celebrateSlate(){
     state.slates++;
-    state.buttons += BUTTONS_PER_SLATE; // silent, like the per-jar button
+    state.buttons += BUTTONS_PER_SLATE;
+    flyButtons(BUTTONS_PER_SLATE, tray); // ten buttons parade from the cleared table
     const extra = pendingSlateExtra || '';
     pendingSlateExtra = null;
     renderStats();
@@ -1952,14 +2028,82 @@
     clearChime();
     announce('Bought ' + item.name + '. New beads will arrive in future scoops.');
     renderCatalog();
+    renderTin();
   }
+
+  /* ---------- the button tin: balance in the scene, door to the catalog ---------- */
+  const tinBtn = document.getElementById('tinBtn');
+  const catalogSheet = document.getElementById('catalogSheet');
+  const sheetScrim = document.getElementById('sheetScrim');
+  function renderTin(){
+    tinBtn.innerHTML = '<span>' + state.buttons + '</span>' + buttonIcon(27);
+    tinBtn.setAttribute('aria-label',
+      state.buttons + ' buttons in the tin. Open the catalog.');
+  }
+  // Earned buttons fly from the jar that earned them into the tin — the
+  // movement is the celebration; the count only changes when they land.
+  function flyButtons(n, fromEl){
+    if (RM || !fromEl || !fromEl.isConnected){ renderTin(); return; }
+    const from = fromEl.getBoundingClientRect();
+    const to = tinBtn.getBoundingClientRect();
+    const count = Math.min(n, 12);
+    for (let i = 0; i < count; i++){
+      const fly = document.createElement('span');
+      fly.className = 'btn-fly';
+      fly.innerHTML = buttonIcon(15);
+      const sx = from.left + from.width / 2 + (Math.random() * 22 - 11);
+      const sy = from.top + from.height / 2;
+      fly.style.left = sx + 'px';
+      fly.style.top = sy + 'px';
+      document.body.appendChild(fly);
+      const dx = to.left + to.width / 2 - sx;
+      const dy = to.top + to.height / 2 - sy;
+      const lift = Math.min(44, Math.hypot(dx, dy) * 0.18);
+      const anim = fly.animate(
+        [{ transform:'translate(-50%,-50%)', opacity:1 },
+         { transform:'translate(calc(-50% + ' + (dx * 0.55) + 'px), calc(-50% + ' + (dy * 0.55 - lift) + 'px)) scale(.9)', offset:.6 },
+         { transform:'translate(calc(-50% + ' + dx + 'px), calc(-50% + ' + dy + 'px)) scale(.4)', opacity:.9 }],
+        { duration: 520, delay: i * 70, easing:'cubic-bezier(.35,0,.6,1)', fill:'backwards' });
+      anim.onfinish = () => {
+        fly.remove();
+        if (i === 0) renderTin(); // first landing carries the news
+        tinBtn.animate(
+          [{ transform:'scale(1)' }, { transform:'scale(1.05)' }, { transform:'scale(1)' }],
+          { duration: 140 });
+      };
+    }
+  }
+  let sheetReturnFocus = null;
+  function openCatalog(fromEl){
+    sheetReturnFocus = fromEl || null;
+    renderCatalog();
+    sheetScrim.hidden = false;
+    catalogSheet.hidden = false;
+    void catalogSheet.offsetHeight; // commit the closed position, then slide
+    sheetScrim.classList.add('open');
+    catalogSheet.classList.add('open');
+    catalogSheet.focus();
+  }
+  function closeCatalog(){
+    confirming = null;
+    sheetScrim.classList.remove('open');
+    catalogSheet.classList.remove('open');
+    const done = () => { sheetScrim.hidden = true; catalogSheet.hidden = true; };
+    if (RM) done(); else setTimeout(done, 300);
+    if (sheetReturnFocus) sheetReturnFocus.focus();
+    sheetReturnFocus = null;
+  }
+  tinBtn.addEventListener('click', () => openCatalog(tinBtn));
+  sheetScrim.addEventListener('click', closeCatalog);
+  document.getElementById('sheetGrip').addEventListener('click', closeCatalog);
+  renderTin();
   /* ---------- pages: tray · shelf · catalog, one tap each ---------- */
   const TABS = {
     tray: document.getElementById('tabTray'),
     shelf: document.getElementById('tabShelf'),
     catalog: document.getElementById('tabCatalog'),
   };
-  function showPage(page){
+  function showPage(page){ // tray | shelf — the catalog is a sheet, not a place
     for (const name in TABS){
       TABS[name].classList.toggle('active', name === page);
       if (name === page) TABS[name].setAttribute('aria-current', 'page');
@@ -1967,26 +2111,20 @@
     }
     confirming = null;
     if (page === 'tray'){ shelfView.hidden = true; return; }
-    const cat = page === 'catalog';
     shelfView.hidden = false; // visible first: renderShelf measures width
-    catalogPage.hidden = !cat;
-    shelfScroll.hidden = cat;
-    shelfUtil.hidden = cat;
-    tinLine.hidden = !cat;
-    shelfTitle.textContent = cat ? 'the catalog' : 'the shelf';
-    if (cat){
-      renderCatalog();
-    } else {
-      renderShelf();
-      backupNote.textContent = NOTE_DEFAULT;
-      document.getElementById('buildNote').textContent =
-        'this copy deployed ' + document.lastModified;
-      shelfScroll.scrollTop = shelfScroll.scrollHeight; // newest jars greet you
-    }
+    renderShelf();
+    backupNote.textContent = NOTE_DEFAULT;
+    document.getElementById('buildNote').textContent =
+      'this copy deployed ' + document.lastModified;
+    shelfScroll.scrollTop = shelfScroll.scrollHeight; // newest jars greet you
   }
-  for (const name in TABS) TABS[name].addEventListener('click', () => showPage(name));
+  TABS.tray.addEventListener('click', () => showPage('tray'));
+  TABS.shelf.addEventListener('click', () => showPage('shelf'));
+  TABS.catalog.addEventListener('click', () => openCatalog(TABS.catalog));
   document.addEventListener('keydown', ev => {
-    if (ev.key === 'Escape' && !shelfView.hidden) showPage('tray');
+    if (ev.key !== 'Escape') return;
+    if (!catalogSheet.hidden) closeCatalog();
+    else if (!shelfView.hidden) showPage('tray');
   });
   document.getElementById('copySaveBtn').addEventListener('click', async () => {
     save();
@@ -2038,7 +2176,8 @@
     window.plinkButtons = (n = 100) => {
       state.buttons += n;
       save();
-      if (!catalogPage.hidden) renderCatalog();
+      renderTin();
+      if (!catalogSheet.hidden) renderCatalog();
     };
   }
 
