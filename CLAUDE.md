@@ -6,10 +6,13 @@ This file provides instructions and context for AI coding agents working on this
 
 At the beginning of every session, run these steps in order:
 
-**1. Read `docs/GENESIS.md` in full** (use the Read tool — do not truncate with
-`sed`/`head`). It holds the original intent: inspirations, philosophy, the *why*
-before any code. Ground yourself in it before making any recommendation or
-design decision.
+**1. Read `docs/GENESIS.md` AND `docs/CANON.md` in full** (use the Read tool —
+do not truncate with `sed`/`head`). GENESIS holds the original intent — the
+*why* before any code — and is essentially frozen; do not amend it to track
+evolving direction. CANON holds the current center of gravity: which version
+of each system is live, what has been retired, and the design rules earned
+since GENESIS. Where a mechanism differs between them, CANON wins. Ground
+yourself in both before making any recommendation or design decision.
 
 **2. Run `bd prime`** — this outputs the full beads workflow reference
 (commands, rules, memories). Read the entire output; do not skip or summarize.
@@ -216,11 +219,18 @@ Everything lives in `index.html`, in this order:
 - **Interaction** — pointer-event drag with lerp, tap-to-hold alternative,
   keyboard support, aria-live announcements, `prefers-reduced-motion`
   respected throughout.
-- **Core rules** — `computeScoop()` (deadlock-proof scoop composer),
-  `evictIndex()` (minority-color take-back), `hasCleanMove()` (pour-offer
-  condition). These are the tested invariants; `tests/run.js` extracts them
-  from `index.html` by function-name markers — renaming those functions
-  requires updating the markers.
+- **Core rules** — since the two-compartment tray (plink-uni, 2026-07),
+  the live rules are `computeScoopHonest()` (honest-random scoops; a
+  pending color gift never whiffs), `rollUniNextPerfect()` (perfect-scoop
+  cadence in sorted beads, tip-back-spam-proof), `presortCap()` (the dish
+  holds one handful = `scoopBase()`), `state.cleared` (one tray
+  celebration per pour — kills the jar-evict-jar level loop), and
+  `evictIndex()` (minority-color take-back). The orchestrated composer
+  (`computeScoop()`, `hasCleanMove()`, wall/ROOM_CAP machinery) is a
+  dead path behind the always-true `UNI` flag, kept under test until
+  plink-pbr retires it — do not build on it. `tests/run.js` extracts
+  rules from `index.html` by function-name markers — renaming those
+  functions requires updating the markers.
 
 ## Design Rules (invariants, not preferences)
 
@@ -228,20 +238,31 @@ Everything lives in `index.html`, in this order:
   Physical fullness (a full jar refusing a bead) is fine; judgment is not.
 - **Sound must stay consonant** — fixed tone per jar, pentatonic across jars;
   never rising-pitch tension mechanics.
-- **The player can never be stuck** — in both senses: `computeScoop()`
-  guarantees mathematical progress (property-tested), and the UI must always
-  signpost an action (clean move, pour offer, or shelve nudge). Any new
-  mechanic must preserve both.
+- **The player can never be stuck** — in both senses. The guarantee is now
+  *physical reversibility*, not composer math: every placement can be
+  undone (tap a jar to take back, hold to pour out, tip the mix back into
+  the bag), so any state reaches a fresh handful. The UI must always
+  signpost an action — the standing pour and tip-back are that signpost.
+  Any new mechanic must preserve both senses.
 - **New distinguishing axes (size/shape) are planned** — see beads issues —
   and should add challenge through variety, never through squinting.
+  (The no-squinting rule protects the *mix*, where you hunt; staged beads
+  in the pre-sort dish may pile and overlap like a real dish.)
+- **Chrome is conventional; the scene is the game.** One control family
+  (pills, hierarchy by weight and placement), lit cream means *active* and
+  nothing else, diegetic invention reserved for gameplay objects. The full
+  rule and its provenance live in `docs/CANON.md` (and plink-2q1) — CANON
+  is the authority; this line is the reminder.
 
 ## Testing Philosophy
 
 Use tests to protect core rules and formulas, not to simulate the full runtime.
 
 Pure logic that must stay under test (via `tests/run.js` extraction): the
-scoop composer and its no-deadlock invariant (property-tested over random
-states), eviction order, clean-move detection, and any future rule with the
+honest composer (gift-never-whiffs, pool discipline, no color starving),
+the perfect-scoop cadence window, eviction order, save migration
+(`normalizeColorId` and kin), plus the legacy composer's no-deadlock
+invariant until plink-pbr retires that code, and any future rule with the
 same shape (shelving conditions, palette distances, level pacing).
 
 Avoid brittle automated tests for runtime-heavy behavior: drag feel,
