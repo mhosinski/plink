@@ -63,6 +63,14 @@
   .top{
     display:flex; align-items:flex-start; justify-content:space-between;
     padding:2px 4px 8px;
+    /* the header is shared chrome for both places — it floats above the
+       shelf so the shelf pill can be a true same-location toggle */
+    position:relative; z-index:65;
+  }
+  .pill-btn[aria-pressed="true"]{
+    background:var(--tape); color:var(--tape-ink);
+    border-color:transparent;
+    box-shadow:0 3px 6px rgba(0,0,0,.3);
   }
   .logo{
     margin:0;
@@ -84,7 +92,7 @@
     letter-spacing:.14em; text-transform:uppercase;
     color:var(--cream-dim);
   }
-  .sound{
+  .sound,.pill-btn{
     background:rgba(0,0,0,.22);
     border:1px solid rgba(243,231,211,.25);
     color:var(--cream);
@@ -92,6 +100,7 @@
     min-width:44px; min-height:36px;
     padding:6px 13px;
     font-size:13px; font-weight:700;
+    white-space:nowrap;
     cursor:pointer;
     transition:opacity .2s;
   }
@@ -383,37 +392,14 @@
   }
 
   /* ---------- footer ---------- */
-  .statsbar{display:flex; flex-direction:column; align-items:center;}
   .stats{
     margin:0;
-    width:100%;
-    padding:10px 6px 2px;
-    text-align:center;
+    padding:6px 2px 0;
+    text-align:right;
     font-size:12.5px; font-weight:600;
     letter-spacing:.08em;
     color:var(--cream-dim);
     font-variant-numeric:tabular-nums;
-  }
-  /* one tap to anywhere: the tabs stay visible over every page (they
-     replace any close button), floating above the shelf/catalog overlay */
-  .tabs{
-    display:flex; gap:10px; justify-content:center;
-    padding:8px 0 2px;
-    position:relative; z-index:70;
-  }
-  .tab{
-    font-family:var(--marker); font-size:16px;
-    padding:7px 20px 9px;
-    border:0; cursor:pointer;
-    color:var(--cream-dim);
-    background:rgba(255,255,255,.08);
-    clip-path:polygon(2% 12%, 5% 0%, 97% 4%, 100% 22%, 98% 88%, 95% 100%, 3% 97%, 0% 78%);
-    transition:background .15s, color .15s;
-  }
-  .tab.active{
-    background:var(--tape);
-    color:var(--tape-ink);
-    box-shadow:0 3px 6px rgba(0,0,0,.3);
   }
   .stats b{color:var(--cream); font-weight:800;}
   .backup{
@@ -433,21 +419,18 @@
     position:fixed; inset:0; z-index:60;
     display:flex; flex-direction:column;
     max-width:520px; margin:0 auto;
-    /* bottom padding clears the floating tab row */
-    padding:calc(10px + env(safe-area-inset-top)) 14px calc(58px + env(safe-area-inset-bottom));
-    background:
-      radial-gradient(120% 90% at 50% 0%, rgba(255,220,170,.10), transparent 60%),
-      radial-gradient(140% 120% at 50% 110%, rgba(0,0,0,.38), transparent 55%),
-      repeating-linear-gradient(90deg,
-        var(--wood-1) 0px, var(--wood-2) 46px, var(--wood-1) 47px,
-        var(--wood-2) 90px, var(--wood-3) 91px, var(--wood-1) 138px),
-      var(--wood-2);
+    padding:calc(10px + env(safe-area-inset-top)) 14px calc(4px + env(safe-area-inset-bottom));
+    /* No background of its own: the body's wall shows through, so the
+       wood is one continuous surface across both places (a second copy
+       of the gradient can never phase-align with the body's). The table
+       parts underneath hide while we're looking up. */
     animation:shelfin .25s ease;
   }
   .shelf-view[hidden]{display:none;}
   @keyframes shelfin{from{opacity:0;}}
   .shelf-head{display:flex; align-items:baseline; justify-content:space-between; padding:2px 4px 8px;}
   .shelf-title{
+    white-space:nowrap;
     margin:0;
     font-family:var(--marker); font-weight:400;
     font-size:26px; letter-spacing:.03em;
@@ -595,7 +578,8 @@
       <p class="tagline">a bead-sorting fidget</p>
     </div>
     <div class="top-right">
-      <button class="sound" id="soundBtn" aria-pressed="true" aria-label="Sound on">&#9835; on</button>
+      <button class="sound" id="soundBtn" aria-pressed="true" aria-label="Sound on">&#9835;</button>
+      <button class="pill-btn" id="shelfBtn" aria-pressed="false" aria-label="Look at the shelf">shelf</button>
       <!-- the same count-with-button the catalog wears, in the tray's top
            right corner (Mike's call, 2026-07-18); tapping it opens the catalog -->
       <button class="tin tin-top" id="tinBtn"></button>
@@ -617,21 +601,15 @@
     <button class="tape-btn" id="pourBtn">pour a scoop</button>
   </div>
 
-  <footer class="statsbar">
-    <p class="stats" id="stats"></p>
-  </footer>
-  <nav class="tabs" aria-label="Pages">
-    <button class="tab active" id="tabTray" aria-current="page">tray</button>
-    <button class="tab" id="tabShelf">shelf</button>
-    <button class="tab" id="tabCatalog">catalog</button>
-  </nav>
   <div class="sr" aria-live="polite" id="sr"></div>
 </main>
 
-<div class="shelf-view" id="shelfView" hidden role="dialog" aria-modal="true"
-  aria-label="The shelf: every jar ever filled">
+<div class="shelf-view" id="shelfView" hidden
+  aria-label="The shelf: every jar ever filled" tabindex="-1">
   <div class="shelf-head">
     <h2 class="shelf-title" id="shelfTitle">the shelf</h2>
+    <!-- the numbers live where admiring happens, not over the tray -->
+    <p class="stats" id="stats"></p>
   </div>
   <div class="shelf-scroll" id="shelfScroll"></div>
   <div class="shelf-util" id="shelfUtil">
@@ -1827,12 +1805,12 @@
     state.sound = !state.sound;
     soundBtn.setAttribute('aria-pressed', String(state.sound));
     soundBtn.setAttribute('aria-label', state.sound ? 'Sound on' : 'Sound off');
-    soundBtn.innerHTML = '♫ ' + (state.sound ? 'on' : 'off');
+    soundBtn.innerHTML = '♫'; // strike-through + dimming carry the off state
     save();
     if (state.sound) tone(659.25, { vol:0.12, dur:0.2 });
   });
   soundBtn.setAttribute('aria-pressed', String(state.sound));
-  soundBtn.innerHTML = '♫ ' + (state.sound ? 'on' : 'off');
+  soundBtn.innerHTML = '♫'; // strike-through + dimming carry the off state
   if (!state.sound) soundBtn.setAttribute('aria-label', 'Sound off');
 
   // A mixed jar occasionally gives a tiny wobble — a wordless nudge that
@@ -2097,30 +2075,41 @@
   sheetScrim.addEventListener('click', closeCatalog);
   document.getElementById('sheetGrip').addEventListener('click', closeCatalog);
   renderTin();
-  /* ---------- pages: tray · shelf · catalog, one tap each ---------- */
-  const TABS = {
-    tray: document.getElementById('tabTray'),
-    shelf: document.getElementById('tabShelf'),
-    catalog: document.getElementById('tabCatalog'),
-  };
-  function showPage(page){ // tray | shelf — the catalog is a sheet, not a place
-    for (const name in TABS){
-      TABS[name].classList.toggle('active', name === page);
-      if (name === page) TABS[name].setAttribute('aria-current', 'page');
-      else TABS[name].removeAttribute('aria-current');
-    }
+  /* ---------- places: the table, and the shelf above it ---------- */
+  // One control, one location: the shelf pill toggles the place. The
+  // header stays above the shelf view, so leaving happens exactly where
+  // entering did. The covered table goes inert (it is a place-change,
+  // not a dialog — the persistent header must stay reachable).
+  const shelfBtn = document.getElementById('shelfBtn');
+  const tableParts = [document.getElementById('jars'),
+    document.querySelector('.tray-wrap'), document.querySelector('.pour-bar')];
+  // hidden, not just inert: the shelf view is transparent so the body's
+  // wood stays one continuous wall — the table must actually vanish
+  function showPage(page){ // 'tray' | 'shelf' — the catalog is a sheet, not a place
     confirming = null;
-    if (page === 'tray'){ shelfView.hidden = true; return; }
+    const up = page === 'shelf';
+    shelfBtn.setAttribute('aria-pressed', up);
+    tableParts.forEach(el => {
+      if (up) el.setAttribute('inert', ''); else el.removeAttribute('inert');
+      el.style.visibility = up ? 'hidden' : '';
+    });
+    if (!up){
+      shelfView.hidden = true;
+      shelfBtn.focus();
+      return;
+    }
+    // clear the floating header, whatever height it wrapped to
+    shelfView.style.paddingTop =
+      (document.querySelector('.top').getBoundingClientRect().bottom + 6) + 'px';
     shelfView.hidden = false; // visible first: renderShelf measures width
     renderShelf();
     backupNote.textContent = NOTE_DEFAULT;
     document.getElementById('buildNote').textContent =
       'this copy deployed ' + document.lastModified;
     shelfScroll.scrollTop = shelfScroll.scrollHeight; // newest jars greet you
+    shelfView.focus();
   }
-  TABS.tray.addEventListener('click', () => showPage('tray'));
-  TABS.shelf.addEventListener('click', () => showPage('shelf'));
-  TABS.catalog.addEventListener('click', () => openCatalog(TABS.catalog));
+  shelfBtn.addEventListener('click', () => showPage(shelfView.hidden ? 'shelf' : 'tray'));
   document.addEventListener('keydown', ev => {
     if (ev.key !== 'Escape') return;
     if (!catalogSheet.hidden) closeCatalog();
