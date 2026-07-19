@@ -1334,7 +1334,9 @@
   // state.sorted/state.pourCount, however many beads it clears (the trap
   // design cut 1 named: a dump must not fire level-ups or pacing).
   function dumpMix(){
-    const beads = Array.from(tray.querySelectorAll('.bead')).filter(b => !inPresort(b) && !b.dataset.locked);
+    // Reversed so the top of the pile tips off first — DOM order is
+    // bottom-to-top, and a real tray sheds its uppermost beads first.
+    const beads = Array.from(tray.querySelectorAll('.bead')).filter(b => !inPresort(b) && !b.dataset.locked).reverse();
     if (!beads.length){
       // Still give feedback — a silent no-op reads as broken, not empty.
       tone(150, { vol:0.08, dur:0.1 });
@@ -1405,6 +1407,11 @@
           (dragLock && dragLock !== bead && dragLock.isConnected)) return;
       dragLock = bead;
       pid = ev.pointerId;
+      // A touched bead surfaces immediately and stays on top after release:
+      // stacking among beads is DOM order (equal z-index), and syncTray
+      // persists that order. Must precede setPointerCapture — reparenting
+      // a captured element can drop the capture on iOS Safari.
+      tray.appendChild(bead);
       bead.setPointerCapture(pid);
       sx = ev.clientX; sy = ev.clientY;
       tx = ty = cx = cy = 0;
