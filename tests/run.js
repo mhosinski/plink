@@ -63,7 +63,6 @@ if (!src.includes('manifest.webmanifest') || !src.includes('serviceWorker'))
 const SLICES = {
   scoop: ['function activeColorCount', 'function pour('],
   evict: ['function evictIndex', 'function reflowMinis'],
-  clean: ['function hasCleanMove', 'function updatePourUI'],
   migrate: ['const RETIRED', 'state.jars = state.jars.map'],
 };
 function slice(name) {
@@ -75,13 +74,12 @@ function slice(name) {
 
 // ---- shared stubs matching the game's constants ----
 const COLORS = Array.from({ length: 10 }, (_, i) => ({ id: 'c' + i, name: 'c' + i }));
-const CAP = 12, JAR_COUNT = 5, TOTAL_CAP = 60, ROOM_CAP = 120, MIN_BREATH = 10, MIX_CAP = 180;
+const CAP = 12, JAR_COUNT = 5, TOTAL_CAP = 60, MIX_CAP = 180;
 let state, trayBeads = [];
 const tray = { querySelectorAll: () => trayBeads.map(id => ({ dataset: { color: id } })) };
 
 eval(slice('scoop'));
 eval(slice('evict'));
-eval(slice('clean'));
 
 let failures = 0;
 function check(cond, label) {
@@ -103,28 +101,13 @@ check(colorOf('c1~star') === 'c1' && shapeOf('c1~star') === 'star' && shapeOf('c
 check(evictIndex(['a', 'a~star', 'b']) === 2, 'evict: minority judged by color, shape ignored');
 check(evictIndex(['a', 'a~star']) === 1, 'evict: single color with shapes = undo (newest)');
 
-// ---- hasCleanMove: non-full jar, empty or uniformly the bead's color ----
-function cleanCase(jars, beads, want, label) {
-  state = { jars };
-  trayBeads = beads;
-  check(hasCleanMove() === want, 'clean: ' + label);
-}
-cleanCase([['x', 'x', 'x'], ['y', 'y', 'y'], ['z', 'z', 'z'], Array(10).fill('w'), Array(9).fill('v')],
-  ['a', 'a', 'a', 'b', 'b', 'b'], false, 'all jars claimed by other colors -> none');
-cleanCase([[], ['x']], ['a'], true, 'empty jar -> clean move');
-cleanCase([['a', 'a'], ['x']], ['a'], true, 'matching uniform jar -> clean move');
-cleanCase([Array(12).fill('a'), ['x']], ['a'], false, 'matching jar but full -> none');
-cleanCase([['a', 'x'], ['y']], ['a'], false, 'only mixed/other jars -> none');
-cleanCase([['x']], [], false, 'empty tray -> vacuously none needed');
-cleanCase([['a', 'a~star'], ['x']], ['a~heart'], true, 'shaped bead fits its color-uniform jar');
-
 // ---- normalizeColorId: saves are a public contract ----
 // Evaluated in its own scope with the real palette ids, since the
 // normalizer's KNOWN_IDS derives from COLORS.
-const { normalizeColorId, seedButtons } = (function () {
+const { normalizeColorId, seedButtons, migrateCadenceNames } = (function () {
   const COLORS = ['cherry', 'jade', 'cornflower', 'honey', 'clementine'].map(id => ({ id }));
   eval(slice('migrate'));
-  return { normalizeColorId, seedButtons };
+  return { normalizeColorId, seedButtons, migrateCadenceNames };
 })();
 check(normalizeColorId('moss') === 'jade', 'migrate: retired moss -> jade');
 check(normalizeColorId('cocoa') === 'clementine', 'migrate: retired cocoa -> clementine');
@@ -135,6 +118,21 @@ check(normalizeColorId('jade~star') === 'jade~star', 'migrate: composite id pass
 check(normalizeColorId('moss~heart') === 'jade~heart', 'migrate: retired color keeps its shape');
 check(normalizeColorId('jade~blob') === 'jade', 'migrate: unknown shape dropped, color kept');
 check(normalizeColorId('sage~star') === 'cherry~star', 'migrate: unknown color coerced, known shape kept');
+
+// ---- migrateCadenceNames: the uni de-slug reads fossils once ----
+{
+  const s = migrateCadenceNames({ uniSorted: 42, uniNextPerfect: 90, uniGift: 'jade' });
+  check(s.cadenceSorted === 42 && s.nextPerfectAt === 90 && s.pendingGift === 'jade',
+    'migrate: uni-era save maps to the de-slugged names');
+  check(s.uniSorted === 42 && s.uniNextPerfect === 90 && s.uniGift === 'jade',
+    'migrate: fossils stay in place for older cached pages');
+  const round = migrateCadenceNames(
+    { uniSorted: 42, uniGift: 'jade', cadenceSorted: 99, nextPerfectAt: 120, pendingGift: null });
+  check(round.cadenceSorted === 99 && round.nextPerfectAt === 120 && round.pendingGift === null,
+    'migrate: stale fossils never clobber a round-tripped save');
+  check(!('cadenceSorted' in migrateCadenceNames({})),
+    'migrate: pre-wells save passes through untouched');
+}
 
 // ---- seedButtons: the retroactive grant is a one-time gift ----
 check(seedButtons({ shelved: 67, slates: 4 }) === 107, 'buttons: seeded from counters (67 + 4x10)');
@@ -216,30 +214,30 @@ trayBeads = [];
 // ---- computeScoopHonest: honest randomness, gifts never whiff ----
 {
   trayBeads = [];
-  state = { level: 1, uniGift: null };
+  state = { level: 1, pendingGift: null };
   let bag = computeScoopHonest();
   check(bag.length === 18, 'honest: bag is exactly a scoop (18 at level 1)');
   const pool = new Set(COLORS.slice(0, 4).map(c => c.id));
   check(bag.every(id => pool.has(id)), 'honest: only unlocked colors dealt');
-  state = { level: 1, uniGift: 'c3' };
+  state = { level: 1, pendingGift: 'c3' };
   bag = computeScoopHonest();
-  check(bag.includes('c3') && state.uniGift === null, 'honest: pending gift always dealt, then cleared');
-  state = { level: 1, uniGift: 'c9' }; // out-of-pool gift (corrupt/future save)
+  check(bag.includes('c3') && state.pendingGift === null, 'honest: pending gift always dealt, then cleared');
+  state = { level: 1, pendingGift: 'c9' }; // out-of-pool gift (corrupt/future save)
   bag = computeScoopHonest();
-  check(!bag.includes('c9') && state.uniGift === 'c9' && bag.length === 18,
+  check(!bag.includes('c9') && state.pendingGift === 'c9' && bag.length === 18,
     'honest: out-of-pool gift held for later, bag unharmed');
   const seenH = new Set();
-  state = { level: 9, uniGift: null };
+  state = { level: 9, pendingGift: null };
   for (let t = 0; t < 200; t++) computeScoopHonest().forEach(id => seenH.add(id));
   check(seenH.size === 10, `honest: all 10 colors appear across many scoops (got ${seenH.size})`);
 }
 
-// ---- rollUniNextPerfect: the pours-era rhythm in sorted-bead units ----
+// ---- rollNextPerfect: the pours-era rhythm in sorted-bead units ----
 {
-  state = { level: 1, uniSorted: 100 }; // scoopBase() = 18 at level 1
+  state = { level: 1, cadenceSorted: 100 }; // scoopBase() = 18 at level 1
   let lo = Infinity, hi = -Infinity;
   for (let t = 0; t < 500; t++){
-    const v = rollUniNextPerfect();
+    const v = rollNextPerfect();
     lo = Math.min(lo, v); hi = Math.max(hi, v);
   }
   check(lo >= 100 + 3 * 18 && hi <= 100 + 8 * 18,
@@ -273,101 +271,6 @@ const poolOK = bf.every((e, k) => {
 });
 check(poolOK, 'backfill: colors respect the unlock curve at each point');
 check(backfillShelf(0, 8, 1).length === 0, 'backfill: nothing missing -> nothing seeded');
-
-// ---- computeScoop fairness: no color may starve in small-room play ----
-// The sister-in-law regime: jars + held leftovers keep in-play near
-// capacity, so scoops are tiny and the top-up consumes leading slots.
-// Every active color must still appear across repeated scoops. (The old
-// positional filler NEVER dealt fixed colors here.)
-{
-  trayBeads = [];
-  const seen = new Set();
-  for (let trial = 0; trial < 300; trial++) {
-    // 5 jars x 10 mixed beads -> every color count 10 (need=2), room 10
-    state = {
-      level: 9,
-      jars: Array.from({ length: 5 }, (_, j) =>
-        [0, 1, 2, 3, 4].flatMap(k => ['c' + ((j * 2) % 10), 'c' + ((j * 2 + 1) % 10)])),
-    };
-    (computeScoop() || []).forEach(id => seen.add(id));
-  }
-  check(seen.size === 10,
-    `fairness: all 10 colors dealt across small-room scoops (got ${seen.size})`);
-}
-
-// ---- computeScoop: no-deadlock invariant, property-tested ----
-// After every pour: either everything in play fits in the jars (tray can
-// clear) or some color has CAP beads in play (a shelve is achievable).
-// null is allowed only when jars are full AND a shelvable color exists.
-let bad = 0;
-const TRIALS = 50000;
-for (let t = 0; t < TRIALS; t++) {
-  const level = 1 + Math.floor(Math.random() * 12);
-  const nColors = Math.min(3 + level, 10);
-  // some beads wear shapes — the composer must stay garnish-blind
-  const rid = () => 'c' + Math.floor(Math.random() * nColors) +
-    (Math.random() < 0.15 ? '~star' : '');
-  const jars = Array.from({ length: JAR_COUNT }, () => {
-    const n = Math.floor(Math.random() * 13);
-    return Array.from({ length: n }, rid);
-  });
-  // held leftovers are unbounded now that the pour is a standing button —
-  // model everything up to a full hoard past room capacity, so the
-  // null/wall states are exercised from hoard-heavy rooms
-  trayBeads = Array.from({ length: Math.floor(Math.random() * (ROOM_CAP + 12)) }, rid);
-  state = { level, jars };
-  const counts = inPlayCounts();
-  const playTotal = Object.values(counts).reduce((a, b) => a + b, 0);
-  const room = ROOM_CAP - playTotal;
-  const maxCount = Math.max(0, ...Object.values(counts));
-  const bag = computeScoop();
-  if (bag === null) {
-    if (!(room <= 0 && maxCount >= CAP)) bad++;
-    continue;
-  }
-  if (bag.length < 1) { bad++; continue; }
-  const after = { ...counts };
-  bag.forEach(id => after[id] = (after[id] || 0) + 1);
-  const clearable = playTotal + bag.length <= TOTAL_CAP;
-  const shelvable = Math.max(...Object.values(after)) >= CAP;
-  if (!clearable && !shelvable) bad++;
-}
-check(bad === 0, `scoop: no-deadlock invariant over ${TRIALS} random states (${bad} bad)`);
-
-// ---- standing-pour boundaries: hoarding never wedges ----
-// A hoarder pours without sorting. The composer must (a) never let beads
-// in play exceed one breath past capacity, (b) hit its wall only when a
-// complete dozen is already in play — so a "fill a jar to shelve it"
-// signpost is always true — and (c) after shelving that dozen, deal
-// again. (Shelving is modeled as removing CAP beads of the color: a jar
-// is always freeable via pour-back, which has no capacity check.)
-{
-  const CEILING = ROOM_CAP + Math.max(MIN_BREATH, CAP - 1);
-  let overshoot = 0, badWall = 0, wedged = 0, walls = 0;
-  for (let trial = 0; trial < 400; trial++) {
-    state = { level: 1 + Math.floor(Math.random() * 12),
-              jars: Array.from({ length: JAR_COUNT }, () => []) };
-    trayBeads = [];
-    for (let step = 0; step < 60; step++) {
-      const bag = computeScoop();
-      if (bag) {
-        trayBeads.push(...bag);
-        if (trayBeads.length > CEILING) overshoot++;
-        continue;
-      }
-      walls++;
-      const counts = {};
-      trayBeads.forEach(id => counts[id] = (counts[id] || 0) + 1);
-      const top = Object.keys(counts).reduce((a, b) => counts[a] >= counts[b] ? a : b);
-      if (counts[top] < CAP) { badWall++; break; }
-      for (let k = 0; k < CAP; k++) trayBeads.splice(trayBeads.indexOf(top), 1);
-      if (!computeScoop()) { wedged++; break; }
-    }
-  }
-  check(overshoot === 0, 'hoard: in-play never exceeds one breath past capacity (' + CEILING + ')');
-  check(badWall === 0 && walls > 0, `hoard: the wall always holds a shelvable dozen (${walls} walls hit)`);
-  check(wedged === 0, 'hoard: shelving at the wall always reopens the room');
-}
 
 // ---- perfect scoop stays sound under a fat hoard ----
 {

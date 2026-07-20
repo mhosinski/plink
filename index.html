@@ -188,20 +188,14 @@
   }
 
   /* ---------- tray ---------- */
-  .tray-wrap{flex:1; display:flex; padding:16px 0 10px; min-height:0; position:relative;}
+  .tray-wrap{flex:1; display:flex; padding:16px 0 10px; min-height:0;}
   .tray{
     position:relative;
     flex:1;
     border-radius:22px;
-    background:
-      radial-gradient(90% 70% at 30% 25%, rgba(255,255,255,.045), transparent 60%),
-      radial-gradient(100% 80% at 70% 80%, rgba(0,0,0,.14), transparent 55%),
-      var(--felt);
+    background:var(--wood-3); /* the molded body; the wells carry the felt */
     border:7px solid var(--wood-3);
-    box-shadow:
-      inset 0 4px 14px rgba(0,0,0,.42),
-      inset 0 -2px 6px rgba(255,255,255,.05),
-      0 5px 10px rgba(0,0,0,.32);
+    box-shadow:0 5px 10px rgba(0,0,0,.32);
   }
   .hint{
     position:absolute; top:12px; left:0; right:0;
@@ -212,18 +206,14 @@
   }
   .hint.gone{opacity:0;}
 
-  /* plink-uni prototype: two-compartment tray, ?preview&uni only.
-     Mike's construction (session 1101b6f5): NOT a divider element laid on
-     the felt — the tray is one molded body, and each compartment is its
-     own rounded felt well sunk into it. The "divider" is the tray's own
-     wood showing between the two wells, and because each well has rounded
-     corners, the wood fills those corner gaps and runs continuously into
-     the outer rim — one solid frame, like a real double-compartment tray. */
-  .tray.uni-mode{
-    background:var(--wood-3); /* the molded body; the wells carry the felt */
-    box-shadow:0 5px 10px rgba(0,0,0,.32); /* keep the drop shadow, lose the felt's inset shading */
-  }
-  .uni-well{
+  /* The two-compartment tray. Mike's construction (session 1101b6f5):
+     NOT a divider element laid on the felt — the tray is one molded body,
+     and each compartment is its own rounded felt well sunk into it. The
+     "divider" is the tray's own wood showing between the two wells, and
+     because each well has rounded corners, the wood fills those corner
+     gaps and runs continuously into the outer rim — one solid frame,
+     like a real double-compartment tray. */
+  .well{
     position:absolute; left:0; right:0;
     background:
       radial-gradient(90% 70% at 30% 25%, rgba(255,255,255,.045), transparent 60%),
@@ -450,7 +440,6 @@
     color:var(--cream);
     text-shadow:0 1px 3px rgba(0,0,0,.35);
   }
-  .tin[hidden]{display:none;}
   .btn-icon{filter:drop-shadow(0 1px 2px rgba(0,0,0,.35));}
   .shelf-scroll{flex:1; overflow-y:auto; min-height:0; padding:4px 2px 14px;}
   .shelf-group-label{
@@ -513,7 +502,6 @@
 
   /* ---------- the catalog ---------- */
   .catalog{flex:1; overflow-y:auto; min-height:0; padding:8px 2px;}
-  .catalog[hidden],.shelf-scroll[hidden],.shelf-util[hidden]{display:none;}
   .cat-items{
     display:grid; grid-template-columns:repeat(3, 1fr);
     gap:12px; max-width:400px; margin:6px auto 0;
@@ -672,20 +660,9 @@
   const NOTES = [523.25, 587.33, 659.25, 783.99, 880.00];
   const JAR_COUNT = NOTES.length;
   const CAP = 12;
-  const TOTAL_CAP = JAR_COUNT * CAP;
-  // The room holds more than the jars do: hoarding is real play, and the
-  // grandest version — staging every jar one bead shy of a single color,
-  // then capping them in a parade — needs the hoarded color's 60 plus a
-  // full tray's worth of everything else still in flight. TOTAL_CAP
-  // stays the perfect-scoop bound (grand-spill rarity is tuned to it).
-  const ROOM_CAP = TOTAL_CAP * 2;
-  const MIN_BREATH = 10; // smallest real scoop, even when held leftovers crowd capacity
+  const TOTAL_CAP = JAR_COUNT * CAP; // also the perfect-scoop bound (grand-spill rarity is tuned to it)
   const RM = matchMedia('(prefers-reduced-motion: reduce)').matches;
   const PREVIEW = location.hostname === 'localhost' || location.search.includes('preview');
-  // The two-compartment tray graduated from ?preview&uni (plink-ece) and
-  // IS the game now. The flag remains so each guarded branch still names
-  // its pre-uni counterpart until the old composer machinery is retired.
-  const UNI = true;
   // Pre-sort sits at the TOP — staging before jars, and jars sit above
   // the tray, so lifting a bead up into pre-sort reads correctly.
   const PRESORT_Y = 24;   // % from top the pre-sort well occupies; first knob to retune
@@ -710,28 +687,28 @@
   const soundBtn = document.getElementById('soundBtn');
   const logoDot = document.getElementById('logoDot');
   const sr = document.getElementById('sr');
-  let dumpBtn = null; // plink-uni prototype: assigned below when UNI is true
-  let presortHintEl = null; // ditto: the one-time pre-sort whisper
+  let dumpBtn = null; // the tip-back verb pill; built at boot with the wells
+  let presortHintEl = null; // the one-time pre-sort whisper
 
   /* ---------- state ---------- */
   const KEY = 'plink-v2';
-  let state = { sorted:0, shelved:0, slates:0, level:1, pourCount:0, nextPerfect:0,
+  let state = { sorted:0, shelved:0, slates:0, level:1,
                 sound:true, hinted:false, hinted2:false, hinted3:false, jars:null, tray:[],
                 shelf:[],   // one {c, t} per shelved jar, in finished order; jars
                             // shelved before this existed live only in the counter
                 buttons:null, // craft currency; null = not yet seeded (plink-lr8)
                 owned:[],     // purchased shape unlocks
-                // Two-compartment era (plink-ece graduation). Cadence counts
-                // sorted beads, not pours, so tip-back spam can never summon
-                // a grand spill; 0 mirrors nextPerfect's own first-pour rule.
-                uniSorted:0, uniNextPerfect:0,
-                uniGift:null,        // a just-unlocked color the next honest scoop must include
+                // Perfect-scoop cadence counts sorted beads, not pours, so
+                // tip-back spam can never summon a grand spill; 0 means the
+                // very first pour is allowed to try for one.
+                cadenceSorted:0, nextPerfectAt:0,
+                pendingGift:null,    // a just-unlocked color the next honest scoop must include
                 presortHinted:false, // the pre-sort whisper has been seen and answered
                 cleared:false };     // this tray already celebrated; the next pour re-arms it
-                                     // (kills the jar-evict-jar level loop, which predates uni)
+                                     // (kills the jar-evict-jar level loop, which predates the wells)
   try {
     const raw = localStorage.getItem(KEY);
-    if (raw) state = Object.assign(state, JSON.parse(raw));
+    if (raw) state = Object.assign(state, migrateCadenceNames(JSON.parse(raw)));
     else {
       const old = localStorage.getItem('plink-v1');
       if (old){
@@ -769,11 +746,23 @@
       ? Math.floor(s.buttons)
       : (s.shelved || 0) * BUTTONS_PER_JAR + (s.slates || 0) * BUTTONS_PER_SLATE;
   }
+  // De-slug migration (plink-pbr): the cadence fields once wore the random
+  // bead slug 'uni' (uniSorted / uniNextPerfect / uniGift). Read the old
+  // keys once; leave them in place, frozen, so an older cached page
+  // meeting this save still finds them (keep-in-saves, stop-writing — the
+  // same fossil policy as pourCount/nextPerfect). Never overwrite a new
+  // key that already exists: on a round-tripped save the fossils are stale.
+  function migrateCadenceNames(s){
+    if (!('cadenceSorted' in s) && 'uniSorted' in s) s.cadenceSorted = s.uniSorted;
+    if (!('nextPerfectAt' in s) && 'uniNextPerfect' in s) s.nextPerfectAt = s.uniNextPerfect;
+    if (!('pendingGift' in s) && 'uniGift' in s) s.pendingGift = s.uniGift;
+    return s;
+  }
   state.jars = state.jars.map(jar => jar.map(normalizeColorId));
   if (Array.isArray(state.tray))
     state.tray.forEach(t => { t.id = normalizeColorId(t.id); });
   // The pending gift is a bare color; normalize it like everything else.
-  state.uniGift = state.uniGift ? normalizeColorId(state.uniGift).split('~')[0] : null;
+  state.pendingGift = state.pendingGift ? normalizeColorId(state.pendingGift).split('~')[0] : null;
   if (Array.isArray(state.shelf))
     state.shelf.forEach(s => {
       s.c = normalizeColorId(s.c);
@@ -781,7 +770,6 @@
     });
   state.buttons = seedButtons(state);
   state.owned = (Array.isArray(state.owned) ? state.owned : []).filter(s => SHAPES.has(s));
-  if (!state.nextPerfect) state.nextPerfect = rollNextPerfect();
   if (!Array.isArray(state.shelf)) state.shelf = [];
   if (state.shelved > state.shelf.length)
     state.shelf = backfillShelf(state.shelved - state.shelf.length, state.level, state.sorted)
@@ -1055,7 +1043,8 @@
   else if (state.hinted) hintEl.textContent = TAKEBACK_HINT;
 
   /* ---------- beads ---------- */
-  let beadsLeft = 0;
+  // Bead counts are always derived from the DOM (mixLeft/presortCount) —
+  // a parallel counter drifted once (the evict exploit) and is retired.
   let heldBead = null;
   let pendingSlateExtra = null; // non-null while caps that finish a clean slate are landing
 
@@ -1081,7 +1070,6 @@
       }
     });
     tray.appendChild(b);
-    beadsLeft++;
     return b;
   }
 
@@ -1094,9 +1082,9 @@
     }
   }
 
-  // Under UNI every dealer (pour, jar pour-back, preview deals) scatters
-  // into the mix well — beads only ever enter pre-sort by the player's hand.
-  function scatterPositions(n, minY = UNI ? PRESORT_Y + 6 : 14, maxY = 88){
+  // Every dealer (pour, jar pour-back, preview deals) scatters into the
+  // mix well — beads only ever enter pre-sort by the player's hand.
+  function scatterPositions(n, minY = PRESORT_Y + 6, maxY = 88){
     const pts = [];
     for (let i = 0; i < n; i++){
       let best = null, bestD = -1;
@@ -1113,10 +1101,9 @@
     return pts;
   }
 
-  // plink-uni prototype: compartment membership is purely positional (no
-  // stored field, no migration) — a bead is "in pre-sort" if it's dragged
-  // at or past the seam line. Only meaningful when UNI is true.
-  function inPresort(bead){ return UNI && parseFloat(bead.style.top) < PRESORT_Y; }
+  // Compartment membership is purely positional (no stored field, no
+  // migration) — a bead is "in pre-sort" if it sits past the seam line.
+  function inPresort(bead){ return parseFloat(bead.style.top) < PRESORT_Y; }
   function mixLeft(){
     return Array.from(tray.querySelectorAll('.bead')).filter(b => !inPresort(b)).length;
   }
@@ -1157,75 +1144,27 @@
   function scoopFits(mixCount){
     return mixCount + scoopBase() <= MIX_CAP;
   }
-  // Perfect-scoop cadence counts sorted beads, not pours (tip-back spam
-  // must never summon a grand spill), scaled by a scoop's worth of beads
-  // so the rhythm stays the pours-era 3-8.
-  function rollUniNextPerfect(){
-    return state.uniSorted + (3 + Math.floor(Math.random() * 6)) * scoopBase();
-  }
-  function inPlayCounts(){
-    const counts = {};
-    state.jars.forEach(jar => jar.forEach(id => {
-      const c = colorOf(id);
-      counts[c] = (counts[c] || 0) + 1;
-    }));
-    tray.querySelectorAll('.bead').forEach(b => {
-      const c = colorOf(b.dataset.color);
-      counts[c] = (counts[c] || 0) + 1;
-    });
-    return counts;
-  }
-  // Builds the next scoop with a no-deadlock guarantee: after every pour,
-  // either everything in play fits in the jars (tray can clear), or at
-  // least one color has CAP beads in play (a shelve is achievable).
-  // Returns null only when the jars are full AND already hold a
-  // completable color — the player shelves to make room.
-  function computeScoop(){
-    const counts = inPlayCounts();
-    const jarTotal = Object.values(counts).reduce((a, b) => a + b, 0);
-    const room = ROOM_CAP - jarTotal;
-    let top = null, topCount = 0;
-    for (const id in counts) if (counts[id] > topCount){ top = id; topCount = counts[id]; }
-    const need = (top && topCount < CAP) ? CAP - topCount : 0;
-    // Breathe past capacity when held leftovers crowd it: always deal at
-    // least MIN_BREATH. Safe beyond room because the bag still tops the
-    // leading color to CAP (need > 0) or one already sits there
-    // (need == 0), so the shelve escape stays live either way.
-    if (room < 1 && need < 1) return null; // jars full & a set of 12 waits
-    let size = Math.min(scoopBase(), Math.max(room, MIN_BREATH));
-    if (need > 0) size = Math.max(size, need);
-    const bag = [];
-    if (need > 0) for (let k = 0; k < need; k++) bag.push(top);
-    // Fill the remainder from a freshly shuffled pool, cycling if it runs
-    // out, so every active color has equal odds in every scoop. (This was
-    // a positional round-robin whose start index equaled `need`; in
-    // small-room play — a tray full of held leftovers — short scoops
-    // never reached fixed positions, permanently starving those colors.)
-    const pool = COLORS.slice(0, activeColorCount(state.level)).map(c => c.id);
-    for (let i = pool.length - 1; i > 0; i--){
-      const j = Math.floor(Math.random() * (i + 1));
-      [pool[i], pool[j]] = [pool[j], pool[i]];
-    }
-    for (let k = 0; bag.length < size; k++) bag.push(pool[k % pool.length]);
-    for (let i = bag.length - 1; i > 0; i--){
-      const j = Math.floor(Math.random() * (i + 1));
-      [bag[i], bag[j]] = [bag[j], bag[i]];
-    }
-    return bag;
+  // Finishing scoops arrive on an unpredictable cadence — a random gap,
+  // re-rolled after each one — and are never announced: the scoop looks
+  // ordinary, and the clean slate is discovered at the last bead. The
+  // cadence counts sorted beads, not pours (tip-back spam must never
+  // summon a grand spill), scaled by a scoop's worth of beads so the
+  // rhythm stays 3-8 scoops.
+  function rollNextPerfect(){
+    return state.cadenceSorted + (3 + Math.floor(Math.random() * 6)) * scoopBase();
   }
 
-  // plink-uni prototype: no topping, no room math — physical reversibility
-  // (tip-back) is what guarantees the player is never stuck, so the scoop
-  // itself can be honest random (clumpy, lucky, textured). Never returns
-  // null; a newly-unlocked color is force-included once so the gift never
-  // whiffs.
+  // No topping, no room math — physical reversibility (tip-back) is what
+  // guarantees the player is never stuck, so the scoop itself can be
+  // honest random (clumpy, lucky, textured). Never returns null; a
+  // newly-unlocked color is force-included once so the gift never whiffs.
   function computeScoopHonest(){
     const pool = COLORS.slice(0, activeColorCount(state.level)).map(c => c.id);
     const size = scoopBase();
     const bag = [];
-    if (state.uniGift && pool.includes(state.uniGift)){
-      bag.push(state.uniGift);
-      state.uniGift = null;
+    if (state.pendingGift && pool.includes(state.pendingGift)){
+      bag.push(state.pendingGift);
+      state.pendingGift = null;
     }
     while (bag.length < size) bag.push(pool[Math.floor(Math.random() * pool.length)]);
     for (let i = bag.length - 1; i > 0; i--){
@@ -1233,13 +1172,6 @@
       [bag[i], bag[j]] = [bag[j], bag[i]];
     }
     return bag;
-  }
-
-  // Finishing scoops arrive on an unpredictable cadence — a random gap,
-  // re-rolled after each one — and are never announced: the scoop looks
-  // ordinary, and the clean slate is discovered at the last bead.
-  function rollNextPerfect(){
-    return state.pourCount + 3 + Math.floor(Math.random() * 6); // 3-8 pours away
   }
 
   // Jars shelved before history recording existed live only in the
@@ -1305,7 +1237,7 @@
   }
 
   function pour(withSound){
-    if (UNI && !scoopFits(mixLeft())){
+    if (!scoopFits(mixLeft())){
       // Same quiet grammar as a full jar or dish — a low tone and a plain
       // sentence, never a wiggle or an error voice.
       tone(150, { vol:0.08, dur:0.1 });
@@ -1313,28 +1245,13 @@
       return;
     }
     let bag = null, dealtPerfect = false;
-    if (UNI){
-      // pourCount is never touched during UNI play, so switching back to
-      // normal play can't have its cadence contaminated by remix spam.
-      if (state.uniSorted >= state.uniNextPerfect){
-        bag = computePerfectScoop();
-        dealtPerfect = !!bag;
-      }
-      if (!bag) bag = computeScoopHonest();
-    } else {
-      if (state.pourCount >= state.nextPerfect){ // pours onto held leftovers count too
-        bag = computePerfectScoop();
-        dealtPerfect = !!bag;
-      }
-      if (!bag) bag = computeScoop();
+    if (state.cadenceSorted >= state.nextPerfectAt){
+      bag = computePerfectScoop();
+      dealtPerfect = !!bag;
     }
-    if (!bag){ showPourUI(); return; }
+    if (!bag) bag = computeScoopHonest(); // never null — the pour never refuses
     bag = decorateBag(bag, state.owned, Math.random);
-    if (UNI){ if (dealtPerfect) state.uniNextPerfect = rollUniNextPerfect(); }
-    else {
-      state.pourCount++;
-      if (dealtPerfect) state.nextPerfect = rollNextPerfect();
-    }
+    if (dealtPerfect) state.nextPerfectAt = rollNextPerfect();
     centerStack.hidden = true;
     clearedMsg.innerHTML = '';
     const pts = scatterPositions(bag.length);
@@ -1350,10 +1267,10 @@
     updatePourUI(); // this pour may have used up the room for the next one
   }
 
-  // plink-uni prototype: tip-back. Returns only the mix pile to the bag —
-  // pre-sort is untouched, and this never calls trayCleared or touches
-  // state.sorted/state.pourCount, however many beads it clears (the trap
-  // design cut 1 named: a dump must not fire level-ups or pacing).
+  // Tip-back. Returns only the mix pile to the bag — pre-sort is
+  // untouched, and this never calls trayCleared or touches state.sorted,
+  // however many beads it clears (the trap design cut 1 named: a dump
+  // must not fire level-ups or pacing).
   function dumpMix(){
     // Reversed so the top of the pile tips off first — DOM order is
     // bottom-to-top, and a real tray sheds its uppermost beads first.
@@ -1372,7 +1289,6 @@
     beads.forEach((b, i) => {
       b.dataset.locked = '1';
       setTimeout(() => {
-        beadsLeft--;
         if (RM){ b.remove(); return; }
         const br = b.getBoundingClientRect();
         const dx = targetX - (br.left + br.width / 2);
@@ -1481,24 +1397,21 @@
     const yPct = ((br.top + br.height / 2 - tr.top) / tr.height) * 100;
     const clampedX = Math.min(95, Math.max(5, xPct));
     let clampedY = Math.min(94, Math.max(6, yPct));
-    if (UNI){
-      // A bead can't balance on the wood ridge between the wells — one
-      // released over it rolls off into whichever well is nearer.
-      const dead = ((21 + 6) / tr.height) * 100; // bead radius + half the ridge, as tray %
-      if (Math.abs(clampedY - PRESORT_Y) < dead)
-        clampedY = clampedY < PRESORT_Y ? PRESORT_Y - dead : PRESORT_Y + dead;
-      // Pre-sort has a real, physical bound — the honest new wall — so a
-      // dish that's already full bounces a new arrival back, same grammar
-      // as a full jar.
-      if (!wasPresort && clampedY < PRESORT_Y && presortCount() >= presortCap()){
-        clampedY = PRESORT_Y + Math.max(6, dead);
-        tone(150, { vol:0.1, dur:0.12 });
-        announce('the pre-sort dish is full');
-      }
-      if (presortHintEl && clampedY < PRESORT_Y){
-        presortHintEl.classList.add('gone');
-        state.presortHinted = true;
-      }
+    // A bead can't balance on the wood ridge between the wells — one
+    // released over it rolls off into whichever well is nearer.
+    const dead = ((21 + 6) / tr.height) * 100; // bead radius + half the ridge, as tray %
+    if (Math.abs(clampedY - PRESORT_Y) < dead)
+      clampedY = clampedY < PRESORT_Y ? PRESORT_Y - dead : PRESORT_Y + dead;
+    // Pre-sort has a real, physical bound, so a dish that's already full
+    // bounces a new arrival back, same grammar as a full jar.
+    if (!wasPresort && clampedY < PRESORT_Y && presortCount() >= presortCap()){
+      clampedY = PRESORT_Y + Math.max(6, dead);
+      tone(150, { vol:0.1, dur:0.12 });
+      announce('the pre-sort dish is full');
+    }
+    if (presortHintEl && clampedY < PRESORT_Y){
+      presortHintEl.classList.add('gone');
+      state.presortHinted = true;
     }
     bead.style.left = clampedX + '%';
     bead.style.top = clampedY + '%';
@@ -1567,8 +1480,7 @@
       addMini(jarIndex, col, slotIndex, true, shapeOf(beadId));
       state.jars[jarIndex].push(beadId);
       state.sorted++;
-      beadsLeft--;
-      if (UNI) state.uniSorted++;
+      state.cadenceSorted++;
       if (!state.hinted){
         state.hinted = true;
         hintEl.classList.add('gone');
@@ -1586,7 +1498,7 @@
         if (contents.every(id => colorOf(id) === colorOf(contents[0]))) capJar(jarIndex);
         else jarFullHint(jarIndex);
       }
-      if ((UNI ? mixLeft() === 0 : beadsLeft === 0) && !state.cleared) trayCleared();
+      if (mixLeft() === 0 && !state.cleared) trayCleared();
       else updatePourUI();
     };
     if (RM){ settle(); return; }
@@ -1636,10 +1548,10 @@
       jar.setAttribute('aria-label', jarLabel(jarIndex));
       renderStats();
       save();
-      const mixCleared = UNI ? mixLeft() === 0 : beadsLeft === 0;
+      const mixCleared = mixLeft() === 0;
       if (state.jars.every(j => j.length === 0) && mixCleared) celebrateSlate();
       else if (mixCleared && centerStack.hidden) showPourUI('tray sorted ✦');
-      else if (beadsLeft > 0) updatePourUI(); // a freed jar may change the offer
+      else updatePourUI(); // a freed jar may change the offer
     }, RM ? 200 : 1100);
   }
 
@@ -1699,7 +1611,7 @@
       }, RM ? 0 : 120 + k * 70);
     });
     state.sorted = Math.max(0, state.sorted - n);
-    if (UNI) state.uniSorted = Math.max(0, state.uniSorted - n); // cadence can't be pumped by re-sorting
+    state.cadenceSorted = Math.max(0, state.cadenceSorted - n); // cadence can't be pumped by re-sorting
     if (!state.hinted2){ state.hinted2 = true; hintEl.classList.add('gone'); }
     centerStack.hidden = true;
     clearedMsg.textContent = '';
@@ -1742,56 +1654,30 @@
     setTimeout(() => hintEl.classList.add('gone'), 4500);
   }
 
-  // Whenever the composer refuses, a dozen of one color is provably in
-  // play (gate-tested: the wall always holds a shelvable set), so a jar
-  // can always be finished — the copy names the action, not the math.
-  const WALL_MSG = 'the tray is full for now · finish a jar to make room';
-
-  // Center-of-felt text only: celebrations, and the wall when the room
-  // is over capacity. The pour button itself lives outside the tray now.
+  // Center-of-felt text only: celebrations. The pour button itself lives
+  // outside the tray. (The honest composer never refuses — tip-back is
+  // the escape valve — so there is no wall message to show.)
   function showPourUI(message){
     clearedMsg.innerHTML = message || '';
-    // UNI's honest composer never refuses (tip-back is the escape valve
-    // instead), so there's nothing truthful to wall-message about.
-    if (!UNI && !computeScoop())
-      clearedMsg.innerHTML = (message ? message + '<br>' : '') + WALL_MSG;
     centerStack.hidden = !clearedMsg.innerHTML;
-  }
-
-  // A clean move exists when some tray bead fits a non-full jar that is
-  // empty or holds only that bead's color (every() is true on empties).
-  function hasCleanMove(){
-    const trayColors = new Set();
-    tray.querySelectorAll('.bead').forEach(b => trayColors.add(colorOf(b.dataset.color)));
-    for (const color of trayColors)
-      for (const jar of state.jars)
-        if (jar.length < CAP && jar.every(id => colorOf(id) === color)) return true;
-    return false;
   }
 
   // The pour button sits outside the tray and is never withheld: the bag
   // on a real craft table is always in reach, and that standing freedom
   // is what lets a player hoard a color instead of being made to spend
   // it (plink-igv). It lives off the felt so it can't cover a bead and
-  // never tempts from the middle of a finishing pass. The felt's center
-  // carries only text, and only when it is true: the wall message when
-  // the room is over capacity and no clean move remains.
+  // never tempts from the middle of a finishing pass.
   function updatePourUI(){
     // The pill dims while a scoop wouldn't fit; it stays tappable so the
     // refusal can speak (a silent no-op reads as broken, not full).
-    const fits = !UNI || scoopFits(mixLeft());
+    const fits = scoopFits(mixLeft());
     pourBtn.classList.toggle('noroom', !fits);
     pourBtn.setAttribute('aria-disabled', String(!fits));
-    if (UNI ? mixLeft() === 0 : beadsLeft === 0) return; // trayCleared owns the full celebration
-    // a capping jar is about to free up, and capJar re-runs this when it
-    // lands — don't flash a wall that's about to open
+    if (mixLeft() === 0) return; // trayCleared owns the full celebration
+    // a capping jar is mid-celebration and re-runs this when it lands —
+    // don't blank its center text early
     if (jarEls.some(j => j.classList.contains('capped'))) return;
-    // UNI's honest composer never refuses — the standing pour button (and
-    // tip-back) is itself the always-live signpost, no wall to show.
-    if (!UNI && !hasCleanMove() && !computeScoop()){
-      clearedMsg.innerHTML = WALL_MSG;
-      centerStack.hidden = false;
-    } else centerStack.hidden = true;
+    centerStack.hidden = true;
   }
 
   function trayCleared(){
@@ -1801,7 +1687,7 @@
     const before = activeColorCount(state.level);
     state.level++;
     const after = activeColorCount(state.level);
-    if (UNI && after > before) state.uniGift = COLORS[after - 1].id;
+    if (after > before) state.pendingGift = COLORS[after - 1].id;
     let extra = '';
     let said = 'Tray sorted. Pour another scoop when ready.';
     if (after > before){
@@ -1971,8 +1857,6 @@
   // score, so the tin lives here and nowhere else. Purchases are final
   // and regret-free; not affording something is a soft physical refusal
   // (a jiggle, like a full jar), never a lecture.
-  const catalogPage = document.getElementById('catalogPage');
-  const shelfTitle = document.getElementById('shelfTitle');
   const shelfUtil = document.getElementById('shelfUtil');
   const tinLine = document.getElementById('tinLine');
   const catItems = document.getElementById('catItems');
@@ -2191,7 +2075,7 @@
   // Review aids: shapes exist in the engine before the catalog can sell
   // them, so reviews need a way to deal some. Reachable on localhost or
   // with ?preview on the URL — normal play never deals a shape.
-  // (PREVIEW itself is declared up top, alongside UNI.)
+  // (PREVIEW itself is declared up top.)
   if (PREVIEW){
     window.plinkDealShapes = (shape = 'star') => {
       const pts = scatterPositions(12);
@@ -2218,15 +2102,13 @@
     };
   }
 
-  // plink-uni prototype UI: built entirely in JS, only when UNI is true —
-  // no static HTML/CSS ships to normal players. No new scene art (the
+  // The wells and the tip-back verb, built at boot. No new scene art (the
   // hoard-bag revert's lesson): the tip-back button reuses .verb-pill.
-  if (UNI){
-    tray.classList.add('uni-mode');
+  {
     // Two felt wells; the 10px between them is the tray's own wood — the
-    // divider — continuous with the rim (see the .uni-well CSS note).
+    // divider — continuous with the rim (see the .well CSS note).
     const zone = document.createElement('div');
-    zone.className = 'uni-well presort-zone';
+    zone.className = 'well presort-zone';
     zone.style.height = 'calc(' + PRESORT_Y + '% - 5px)';
     // The whisper appears until pre-sort has held a bead, then never
     // again (persisted, like the tray hint). A restored save with beads
@@ -2240,7 +2122,7 @@
       zone.appendChild(presortHintEl);
     }
     const mixWell = document.createElement('div');
-    mixWell.className = 'uni-well mix-zone';
+    mixWell.className = 'well mix-zone';
     mixWell.style.top = 'calc(' + PRESORT_Y + '% + 5px)';
     tray.insertBefore(mixWell, tray.firstChild); // both wells behind the hint text and beads alike
     tray.insertBefore(zone, mixWell);

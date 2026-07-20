@@ -219,20 +219,19 @@ Everything lives in `index.html`, in this order:
 - **Interaction** — pointer-event drag with lerp, tap-to-hold alternative,
   keyboard support, aria-live announcements, `prefers-reduced-motion`
   respected throughout.
-- **Core rules** — since the two-compartment tray (plink-uni, 2026-07),
-  the live rules are `computeScoopHonest()` (honest-random scoops; a
-  pending color gift never whiffs), `rollUniNextPerfect()` (perfect-scoop
-  cadence in sorted beads, tip-back-spam-proof), `scoopFits()` (pour is
-  offered only while a whole scoop fits the mix's static `MIX_CAP` of
-  180; the dish's `presortCap()` is a static 80 — both are performance
-  backstops, never pacing), `state.cleared` (one tray
+- **Core rules** — since the two-compartment tray (2026-07), the rules
+  are `computeScoopHonest()` (honest-random scoops; a pending color gift
+  never whiffs), `rollNextPerfect()` (perfect-scoop cadence in sorted
+  beads via `state.cadenceSorted`, tip-back-spam-proof), `scoopFits()`
+  (pour is offered only while a whole scoop fits the mix's static
+  `MIX_CAP` of 180; the dish's `presortCap()` is a static 80 — both are
+  performance backstops, never pacing), `state.cleared` (one tray
   celebration per pour — kills the jar-evict-jar level loop), and
-  `evictIndex()` (minority-color take-back). The orchestrated composer
-  (`computeScoop()`, `hasCleanMove()`, wall/ROOM_CAP machinery) is a
-  dead path behind the always-true `UNI` flag, kept under test until
-  plink-pbr retires it — do not build on it. `tests/run.js` extracts
-  rules from `index.html` by function-name markers — renaming those
-  functions requires updating the markers.
+  `evictIndex()` (minority-color take-back). The old orchestrated
+  composer was deleted with the `UNI` flag (plink-pbr); bead counts are
+  always derived from the DOM, never from a parallel counter.
+  `tests/run.js` extracts rules from `index.html` by function-name
+  markers — renaming those functions requires updating the markers.
 
 ## Design Rules (invariants, not preferences)
 
@@ -263,9 +262,9 @@ Use tests to protect core rules and formulas, not to simulate the full runtime.
 Pure logic that must stay under test (via `tests/run.js` extraction): the
 honest composer (gift-never-whiffs, pool discipline, no color starving),
 the perfect-scoop cadence window, eviction order, save migration
-(`normalizeColorId` and kin), plus the legacy composer's no-deadlock
-invariant until plink-pbr retires that code, and any future rule with the
-same shape (shelving conditions, palette distances, level pacing).
+(`normalizeColorId`, `migrateCadenceNames`, and kin), and any future rule
+with the same shape (shelving conditions, palette distances, level
+pacing).
 
 Avoid brittle automated tests for runtime-heavy behavior: drag feel,
 animations, Web Audio output, iOS quirks, layout. For those, do a manual

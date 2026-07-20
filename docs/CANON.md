@@ -86,9 +86,13 @@ navigation something to discover, and both were cut.
 ## What Is Not Canon
 
 - **The orchestrated composer** — `computeScoop()`, `hasCleanMove()`, the
-  wall messages and `ROOM_CAP` machinery — is retired scaffolding behind
-  the always-true `UNI` flag, kept under test only until plink-pbr removes
-  it. Do not build on it, extend it, or route new mechanics through it.
+  wall messages and `ROOM_CAP` machinery — was deleted outright with the
+  `UNI` flag (plink-pbr, 2026-07-19), along with its test harness. The
+  'uni' name itself is gone too: it was a random bead slug that calcified
+  into ~60 identifiers; the survivors were renamed to what they mean
+  (`cadenceSorted`, `nextPerfectAt`, `pendingGift`) with a load-time
+  migration, and the old save keys remain only as frozen fossils for
+  older cached pages.
 - **The tape material.** Cream tapes, kraft tapes, the clip-path cut —
   retired with plink-apl. The craft-table voice lives in the marker
   script, the wood, the felt, and the glass now.
