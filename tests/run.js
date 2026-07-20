@@ -75,7 +75,7 @@ function slice(name) {
 
 // ---- shared stubs matching the game's constants ----
 const COLORS = Array.from({ length: 10 }, (_, i) => ({ id: 'c' + i, name: 'c' + i }));
-const CAP = 12, JAR_COUNT = 5, TOTAL_CAP = 60, ROOM_CAP = 120, MIN_BREATH = 10;
+const CAP = 12, JAR_COUNT = 5, TOTAL_CAP = 60, ROOM_CAP = 120, MIN_BREATH = 10, MIX_CAP = 180;
 let state, trayBeads = [];
 const tray = { querySelectorAll: () => trayBeads.map(id => ({ dataset: { color: id } })) };
 
@@ -244,6 +244,19 @@ trayBeads = [];
   }
   check(lo >= 100 + 3 * 18 && hi <= 100 + 8 * 18,
     'cadence: next perfect lands 3-8 scoops of sorted beads ahead');
+}
+
+// ---- scoopFits: the mix bound is a performance backstop (plink-vj7) ----
+{
+  check(+src.match(/const MIX_CAP = (\d+)/)[1] === MIX_CAP,
+    'mixcap: test stub matches the source constant');
+  state = { level: 1 };
+  check(scoopFits(0), 'mixcap: an empty mix always takes a scoop');
+  check(scoopFits(162) && !scoopFits(163),
+    'mixcap: level-1 boundary sits at MIX_CAP minus one small scoop');
+  state = { level: 20 };
+  check(scoopFits(144) && !scoopFits(145),
+    'mixcap: full-scoop boundary sits at MIX_CAP minus 36');
 }
 
 // ---- backfillShelf: synthesized history for counter-only shelves ----

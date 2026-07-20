@@ -222,8 +222,10 @@ Everything lives in `index.html`, in this order:
 - **Core rules** — since the two-compartment tray (plink-uni, 2026-07),
   the live rules are `computeScoopHonest()` (honest-random scoops; a
   pending color gift never whiffs), `rollUniNextPerfect()` (perfect-scoop
-  cadence in sorted beads, tip-back-spam-proof), `presortCap()` (the dish
-  holds one handful = `scoopBase()`), `state.cleared` (one tray
+  cadence in sorted beads, tip-back-spam-proof), `scoopFits()` (pour is
+  offered only while a whole scoop fits the mix's static `MIX_CAP` of
+  180; the dish's `presortCap()` is a static 80 — both are performance
+  backstops, never pacing), `state.cleared` (one tray
   celebration per pour — kills the jar-evict-jar level loop), and
   `evictIndex()` (minority-color take-back). The orchestrated composer
   (`computeScoop()`, `hasCleanMove()`, wall/ROOM_CAP machinery) is a

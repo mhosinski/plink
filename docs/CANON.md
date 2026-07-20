@@ -38,8 +38,15 @@ you go.
   hold to pour it out, tip the whole mix back into the bag. Every state
   reaches a fresh handful because nothing is permanent until it's shelved.
   This is the physical successor to the old composer proof.
-- **The dish holds a handful.** Pre-sort's capacity is `scoopBase()` —
-  it grows on the same curve as the scoops themselves. Staged beads may
+- **Both wells are bounded by room, not rules.** The mix holds `MIX_CAP`
+  (180) beads and the pour is offered only while a whole scoop fits; the
+  pre-sort dish holds 80. Both are static performance backstops — chosen
+  from felt area and what an older phone paints comfortably, far above
+  any pile real play produces — never pacing, and they never scale with
+  the player. Refusal speaks the full-jar grammar: a dimmed pill, a low
+  tone, a plain sentence. Caps gate new arrivals only; an over-full save
+  keeps its beads. (This supersedes "the dish holds a handful": capacity
+  is what fits in the dish, not what fits in a hand.) Staged beads may
   pile and overlap like a real dish; the no-squinting rule protects the
   *mix*, where hunting happens, not the dish, where chosen beads wait.
 - **A tray celebrates once per pour.** `state.cleared` arms exactly one
@@ -96,8 +103,6 @@ navigation something to discover, and both were cut.
 
 ## Open Questions (live beads, decide from play)
 
-- Does the mix pile need a physical bound now that the pour never
-  refuses? (plink-vj7 — the 120-bead tray screenshot is the exhibit.)
 - Should level pacing eventually move from cleared trays to shelved jars —
   advancement tied to irreversible progress? (plink-ppe.)
 - Gesture accelerators — swipe down for the shelf, drag the sheet grip —

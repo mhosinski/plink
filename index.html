@@ -334,6 +334,9 @@
   }
   .verb-pill:hover{background:rgba(0,0,0,.32);}
   .verb-pill:active{transform:scale(.97); background:rgba(255,255,255,.10);}
+  .verb-pill.noroom{opacity:.45; cursor:default;}
+  .verb-pill.noroom:hover{background:rgba(0,0,0,.22);}
+  .verb-pill.noroom:active{transform:none; background:rgba(0,0,0,.22);}
   .verb-pill.confirm{ /* armed: the same lit language as a pressed pill */
     background:var(--tape); color:var(--tape-ink); border-color:transparent;
   }
@@ -686,11 +689,16 @@
   // Pre-sort sits at the TOP — staging before jars, and jars sit above
   // the tray, so lifting a bead up into pre-sort reads correctly.
   const PRESORT_Y = 24;   // % from top the pre-sort well occupies; first knob to retune
-  // The dish holds one handful: its bound tracks scoopBase(), so a new
-  // player's dish fits their small scoops (18) and a veteran's fits their
-  // big ones (36) — capacity grows on the same curve as everything else.
-  // (Her feedback 2026-07-18: hit the old fixed 18 doing real pre-sorting.)
-  const presortCap = () => scoopBase();
+  // Both wells are bounded by physical room, not pacing (plink-vj7): the
+  // caps are static performance backstops chosen from felt area and what
+  // an older phone paints comfortably (~250 beads on the felt, worst
+  // case), far above any pile real play produces. They gate new arrivals
+  // only — an over-full save keeps its beads and sorts or tips its way
+  // back under the line, so no migration is ever needed.
+  // (Supersedes the 2026-07-18 dish-tracks-scoopBase() rule: capacity is
+  // what fits in the dish, not what fits in a hand.)
+  const MIX_CAP = 180;    // ~5 stacked scoops at full scoop size, ~6 beads deep
+  const presortCap = () => 80; // a genuinely heaped dish, ~7 deep
 
   const tray = document.getElementById('tray');
   const jarsEl = document.getElementById('jars');
@@ -1144,6 +1152,11 @@
   function scoopBase(){
     return Math.min(16 + state.level * 2, 36);
   }
+  // A pour is offered only when a whole scoop fits under MIX_CAP — the
+  // gate asks "does a full scoop fit," so a pour never partially spills.
+  function scoopFits(mixCount){
+    return mixCount + scoopBase() <= MIX_CAP;
+  }
   // Perfect-scoop cadence counts sorted beads, not pours (tip-back spam
   // must never summon a grand spill), scaled by a scoop's worth of beads
   // so the rhythm stays the pours-era 3-8.
@@ -1292,6 +1305,13 @@
   }
 
   function pour(withSound){
+    if (UNI && !scoopFits(mixLeft())){
+      // Same quiet grammar as a full jar or dish — a low tone and a plain
+      // sentence, never a wiggle or an error voice.
+      tone(150, { vol:0.08, dur:0.1 });
+      announce('No room in the mix for another scoop — sort a few or tip back.');
+      return;
+    }
     let bag = null, dealtPerfect = false;
     if (UNI){
       // pourCount is never touched during UNI play, so switching back to
@@ -1327,6 +1347,7 @@
     state.cleared = false; // a fresh tray can be cleared again
     save();
     announce('Poured ' + bag.length + ' beads onto the tray.');
+    updatePourUI(); // this pour may have used up the room for the next one
   }
 
   // plink-uni prototype: tip-back. Returns only the mix pile to the bag —
@@ -1443,7 +1464,7 @@
       bead.classList.remove('drag');
       const jar = jarUnder();
       if (jar) attemptDrop(bead, jar, cx, cy);
-      else settleOnTray(bead);
+      else { settleOnTray(bead); updatePourUI(); } // a mix↔dish move can free scoop room
       dragging = false;
     }
     bead.addEventListener('pointerup', finish);
@@ -1756,6 +1777,11 @@
   // carries only text, and only when it is true: the wall message when
   // the room is over capacity and no clean move remains.
   function updatePourUI(){
+    // The pill dims while a scoop wouldn't fit; it stays tappable so the
+    // refusal can speak (a silent no-op reads as broken, not full).
+    const fits = !UNI || scoopFits(mixLeft());
+    pourBtn.classList.toggle('noroom', !fits);
+    pourBtn.setAttribute('aria-disabled', String(!fits));
     if (UNI ? mixLeft() === 0 : beadsLeft === 0) return; // trayCleared owns the full celebration
     // a capping jar is about to free up, and capJar re-runs this when it
     // lands — don't flash a wall that's about to open
