@@ -1,25 +1,53 @@
 #!/usr/bin/env node
 // Quality gates for plink. No dependencies; run with: node tests/run.js
 //
-// index.html is the single source file, so pure logic under test is
-// extracted from it by slicing between function-declaration markers and
-// eval'ing with stubs. If a marker function is renamed, update the
-// SLICES table below.
+// The pure rules live in rules.js (a native ES module) and are imported
+// here directly — no extraction, no stub constants. index.html's inline
+// module script is still syntax- and boot-checked: its import statement
+// is replaced by parameters bound to the real rules exports.
 
 const fs = require('fs');
 const path = require('path');
+const { pathToFileURL } = require('url');
 
-const src = fs.readFileSync(path.join(__dirname, '..', 'index.html'), 'utf8');
+const root = path.join(__dirname, '..');
+const src = fs.readFileSync(path.join(root, 'index.html'), 'utf8');
 
-// Whole-script syntax check
-const js = src.match(/<script>([\s\S]*)<\/script>/)[1];
-new Function(js); // throws on syntax error
+let failures = 0;
+function check(cond, label) {
+  console.log((cond ? 'ok   ' : 'FAIL ') + label);
+  if (!cond) failures++;
+}
+
+(async () => {
+
+const R = await import(pathToFileURL(path.join(root, 'rules.js')));
+const {
+  COLORS, CAP, MIX_CAP,
+  colorOf, shapeOf, activeColorCount, decorateBag, matchBonus,
+  scoopFits, rollNextPerfect, computeScoopHonest, computePerfectScoop,
+  evictIndex, normalizeColorId, migrateCadenceNames, seedButtons,
+  backfillShelf,
+} = R;
+
+// ---- the scene script: import surface, syntax, boot ----
+const js = src.match(/<script type="module">([\s\S]*)<\/script>/)[1];
+const importMatch = js.match(/import\s*\{([\s\S]*?)\}\s*from\s*'\.\/rules\.js';/);
+check(!!importMatch, 'wiring: index.html imports rules.js');
+const importedNames = importMatch[1].split(',').map(s => s.trim()).filter(Boolean);
+check(importedNames.every(n => n in R),
+  'wiring: every imported name is exported by rules.js (' +
+  importedNames.filter(n => !(n in R)).join(', ') + ')');
+const body = js.replace(importMatch[0], '');
+new Function(...importedNames, body); // throws on syntax error
 
 // Boot smoke: the whole script must also INITIALIZE without throwing — a
 // declaration-order/TDZ mistake bricks the game on load, invisible to the
 // syntax check (caught live 2026-07-16: SHAPE_PATHS declared below the
 // jar-restore loop that called it). Browser APIs are one recursive
 // permissive proxy; only what boot genuinely branches on is stubbed real.
+// The rules imports are bound to their real exports, so boot exercises
+// the true load path (normalize, migrate, seed, first pour).
 {
   const p = new Proxy(function () {}, {
     get(t, prop){
@@ -33,13 +61,14 @@ new Function(js); // throws on syntax error
   const boot = new Function(
     'document', 'window', 'localStorage', 'location', 'navigator',
     'matchMedia', 'setTimeout', 'setInterval', 'requestAnimationFrame',
-    'addEventListener', 'console', js);
+    'addEventListener', 'console', ...importedNames, body);
   try {
     boot(
       p, {}, { getItem: () => null, setItem(){}, removeItem(){} },
       { hostname: 'gate', search: '' }, {},
       () => ({ matches: false }), () => 0, () => 0, () => 0,
-      () => 0, { log(){}, warn(){}, error(){} });
+      () => 0, { log(){}, warn(){}, error(){} },
+      ...importedNames.map(n => R[n]));
     console.log('ok   boot: script initializes without throwing');
   } catch (e) {
     console.log('FAIL boot: script threw during initialization: ' + e.message);
@@ -49,46 +78,21 @@ new Function(js); // throws on syntax error
 }
 
 // PWA satellites: manifest parses with required fields; sw parses; all
-// referenced assets exist; index.html wires them up.
-const root = path.join(__dirname, '..');
+// referenced assets exist; index.html wires them up; the sw precaches
+// the index.html + rules.js pair (they must deploy in lockstep).
 const manifest = JSON.parse(fs.readFileSync(path.join(root, 'manifest.webmanifest'), 'utf8'));
 for (const key of ['name', 'short_name', 'start_url', 'display', 'icons'])
   if (!manifest[key]) throw new Error('manifest missing ' + key);
 for (const icon of manifest.icons)
   fs.statSync(path.join(root, icon.src)); // throws if an icon file is missing
-new Function(fs.readFileSync(path.join(root, 'sw.js'), 'utf8'));
+const swSrc = fs.readFileSync(path.join(root, 'sw.js'), 'utf8');
+new Function(swSrc);
 if (!src.includes('manifest.webmanifest') || !src.includes('serviceWorker'))
   throw new Error('index.html does not wire up the PWA');
-
-const SLICES = {
-  scoop: ['function activeColorCount', 'function pour('],
-  evict: ['function evictIndex', 'function reflowMinis'],
-  migrate: ['const RETIRED', 'state.jars = state.jars.map'],
-};
-function slice(name) {
-  const [from, to] = SLICES[name];
-  const a = src.indexOf(from), b = src.indexOf(to);
-  if (a < 0 || b < 0 || b <= a) throw new Error('marker not found for slice: ' + name);
-  return src.slice(a, b);
-}
-
-// ---- shared stubs matching the game's constants ----
-const COLORS = Array.from({ length: 10 }, (_, i) => ({ id: 'c' + i, name: 'c' + i }));
-const CAP = 12, JAR_COUNT = 5, TOTAL_CAP = 60, MIX_CAP = 180;
-let state, trayBeads = [];
-const tray = { querySelectorAll: () => trayBeads.map(id => ({ dataset: { color: id } })) };
-
-eval(slice('scoop'));
-eval(slice('evict'));
-
-let failures = 0;
-function check(cond, label) {
-  console.log((cond ? 'ok   ' : 'FAIL ') + label);
-  if (!cond) failures++;
-}
+check(swSrc.includes("'./rules.js'") && swSrc.includes("'./index.html'"),
+  'wiring: sw.js precaches the index.html + rules.js pair');
 
 // ---- evictIndex: minority color leaves first, newest of that color ----
-state = null;
 check(evictIndex(['a', 'a', 'b', 'a']) === 2, 'evict: minority first');
 check(evictIndex(['a', 'a', 'a']) === 2, 'evict: single color = undo (newest)');
 check(evictIndex(['a', 'b', 'a', 'b']) === 3, 'evict: tie -> newest of tied');
@@ -102,22 +106,15 @@ check(evictIndex(['a', 'a~star', 'b']) === 2, 'evict: minority judged by color, 
 check(evictIndex(['a', 'a~star']) === 1, 'evict: single color with shapes = undo (newest)');
 
 // ---- normalizeColorId: saves are a public contract ----
-// Evaluated in its own scope with the real palette ids, since the
-// normalizer's KNOWN_IDS derives from COLORS.
-const { normalizeColorId, seedButtons, migrateCadenceNames } = (function () {
-  const COLORS = ['cherry', 'jade', 'cornflower', 'honey', 'clementine'].map(id => ({ id }));
-  eval(slice('migrate'));
-  return { normalizeColorId, seedButtons, migrateCadenceNames };
-})();
 check(normalizeColorId('moss') === 'jade', 'migrate: retired moss -> jade');
 check(normalizeColorId('cocoa') === 'clementine', 'migrate: retired cocoa -> clementine');
 check(normalizeColorId('jade') === 'jade', 'migrate: known id passes through');
-check(normalizeColorId('sage') === 'cherry', 'migrate: unknown future id coerced to a known color');
-check(normalizeColorId(undefined) === 'cherry', 'migrate: corrupt entry coerced, never crashes');
+check(normalizeColorId('sage') === COLORS[0].id, 'migrate: unknown future id coerced to a known color');
+check(normalizeColorId(undefined) === COLORS[0].id, 'migrate: corrupt entry coerced, never crashes');
 check(normalizeColorId('jade~star') === 'jade~star', 'migrate: composite id passes with known shape');
 check(normalizeColorId('moss~heart') === 'jade~heart', 'migrate: retired color keeps its shape');
 check(normalizeColorId('jade~blob') === 'jade', 'migrate: unknown shape dropped, color kept');
-check(normalizeColorId('sage~star') === 'cherry~star', 'migrate: unknown color coerced, known shape kept');
+check(normalizeColorId('sage~star') === COLORS[0].id + '~star', 'migrate: unknown color coerced, known shape kept');
 
 // ---- migrateCadenceNames: the uni de-slug reads fossils once ----
 {
@@ -162,98 +159,82 @@ check(matchBonus([]) === 0, 'bonus: empty jar earns nothing');
   check(some.every(id => ['round', 'cube', 'heart'].includes(shapeOf(id))), 'decorate: only owned shapes ever appear');
 }
 
-// ---- computePerfectScoop: finish every color in play, leftovers too ----
-trayBeads = [];
-state = { level: 5, jars: [Array(7).fill('c0'), Array(4).fill('c1'), [], Array(11).fill('c0'), []] };
-const perfect = computePerfectScoop();
-const tally = {};
-(perfect || []).forEach(id => tally[id] = (tally[id] || 0) + 1);
-check(perfect && perfect.length === 14 && tally.c0 === 6 && tally.c1 === 8,
-  'perfect: bag exactly tops every partial jar (c0 x6, c1 x8)');
-state = { level: 5, jars: [['c0', 'c1'], []] };
-check(computePerfectScoop() === null, 'perfect: mixed jar -> not offered');
-state = { level: 5, jars: [[], [], [], [], []] };
-check(computePerfectScoop() === null, 'perfect: nothing in play -> not offered');
-state = { level: 9, jars: Array.from({ length: 5 }, (_, i) => ['c' + i]) };
-check((computePerfectScoop() || []).length === 55, 'perfect: 55-bead grand spill allowed (one tray)');
-state = { level: 9, jars: Array.from({ length: 5 }, (_, i) => ['c' + i]) };
-trayBeads = ['c5'];
-check(computePerfectScoop() === null, 'perfect: need 66 > one full tray -> not offered');
-trayBeads = [];
-state = { level: 5, jars: [Array(11).fill('c2'), [], [], [], []] };
-check((computePerfectScoop() || []).length === 1, 'perfect: single finishing bead allowed');
-// leftover-aware: held tray beads get their completing sets too
-state = { level: 9, jars: [Array(7).fill('c0'), [], [], [], []] };
-trayBeads = ['c5', 'c5', 'c5'];
-const withLeft = computePerfectScoop();
-const t2 = {};
-(withLeft || []).forEach(id => t2[id] = (t2[id] || 0) + 1);
-check(withLeft && t2.c0 === 5 && t2.c5 === 9, 'perfect: leftovers completed (c0 x5, c5 x9)');
-trayBeads = Array(12).fill('c5');
-check(JSON.stringify((computePerfectScoop() || []).sort()) === JSON.stringify(Array(5).fill('c0')),
-  'perfect: an exact dozen on the tray needs no beads of its own');
-// a color spread over two jars completes across both
-state = { level: 9, jars: [Array(7).fill('c0'), Array(4).fill('c0'), [], [], []] };
-trayBeads = ['c0', 'c0'];
-check((computePerfectScoop() || []).length === 11, 'perfect: two jars of one color -> 24 total (need 11)');
-// invariant: after any perfect bag, every color in play totals a multiple of CAP
-state = { level: 9, jars: [Array(9).fill('c1'), Array(6).fill('c3'), [], [], []] };
-trayBeads = ['c7', 'c7', 'c8'];
-const inv = computePerfectScoop();
-const totals = { c1: 9, c3: 6, c7: 2, c8: 1 };
-(inv || []).forEach(id => totals[id]++);
-check(inv && Object.values(totals).every(v => v % CAP === 0),
-  'perfect: every in-play color lands on a multiple of 12');
-// shapes: a color-uniform jar with mixed silhouettes is still uniform
-state = { level: 5, jars: [['c0', 'c0~star', 'c0', 'c0~heart', 'c0', 'c0', 'c0'], [], [], [], []] };
-trayBeads = ['c0~cube'];
-check((computePerfectScoop() || []).length === 4,
-  'perfect: color-uniform jar with mixed shapes completes (7+1 -> +4)');
-trayBeads = [];
-
-// ---- computeScoopHonest: honest randomness, gifts never whiff ----
+// ---- computePerfectScoop(jars, trayIds): finish every color in play ----
 {
-  trayBeads = [];
-  state = { level: 1, pendingGift: null };
-  let bag = computeScoopHonest();
+  let perfect = computePerfectScoop([Array(7).fill('c0'), Array(4).fill('c1'), [], Array(11).fill('c0'), []], []);
+  const tally = {};
+  (perfect || []).forEach(id => tally[id] = (tally[id] || 0) + 1);
+  check(perfect && perfect.length === 14 && tally.c0 === 6 && tally.c1 === 8,
+    'perfect: bag exactly tops every partial jar (c0 x6, c1 x8)');
+  check(computePerfectScoop([['c0', 'c1'], []], []) === null, 'perfect: mixed jar -> not offered');
+  check(computePerfectScoop([[], [], [], [], []], []) === null, 'perfect: nothing in play -> not offered');
+  const oneEach = Array.from({ length: 5 }, (_, i) => ['c' + i]);
+  check((computePerfectScoop(oneEach, []) || []).length === 55, 'perfect: 55-bead grand spill allowed (one tray)');
+  check(computePerfectScoop(oneEach, ['c5']) === null, 'perfect: need 66 > one full tray -> not offered');
+  check((computePerfectScoop([Array(11).fill('c2'), [], [], [], []], []) || []).length === 1,
+    'perfect: single finishing bead allowed');
+  // leftover-aware: held tray beads get their completing sets too
+  const withLeft = computePerfectScoop([Array(7).fill('c0'), [], [], [], []], ['c5', 'c5', 'c5']);
+  const t2 = {};
+  (withLeft || []).forEach(id => t2[id] = (t2[id] || 0) + 1);
+  check(withLeft && t2.c0 === 5 && t2.c5 === 9, 'perfect: leftovers completed (c0 x5, c5 x9)');
+  check(JSON.stringify((computePerfectScoop([Array(7).fill('c0'), [], [], [], []], Array(12).fill('c5')) || []).sort())
+    === JSON.stringify(Array(5).fill('c0')),
+    'perfect: an exact dozen on the tray needs no beads of its own');
+  // a color spread over two jars completes across both
+  check((computePerfectScoop([Array(7).fill('c0'), Array(4).fill('c0'), [], [], []], ['c0', 'c0']) || []).length === 11,
+    'perfect: two jars of one color -> 24 total (need 11)');
+  // invariant: after any perfect bag, every color in play totals a multiple of CAP
+  const inv = computePerfectScoop([Array(9).fill('c1'), Array(6).fill('c3'), [], [], []], ['c7', 'c7', 'c8']);
+  const totals = { c1: 9, c3: 6, c7: 2, c8: 1 };
+  (inv || []).forEach(id => totals[id]++);
+  check(inv && Object.values(totals).every(v => v % CAP === 0),
+    'perfect: every in-play color lands on a multiple of 12');
+  // shapes: a color-uniform jar with mixed silhouettes is still uniform
+  check((computePerfectScoop([['c0', 'c0~star', 'c0', 'c0~heart', 'c0', 'c0', 'c0'], [], [], [], []], ['c0~cube']) || []).length === 4,
+    'perfect: color-uniform jar with mixed shapes completes (7+1 -> +4)');
+}
+
+// ---- computeScoopHonest(state): honest randomness, gifts never whiff ----
+{
+  let state = { level: 1, pendingGift: null };
+  let bag = computeScoopHonest(state);
   check(bag.length === 18, 'honest: bag is exactly a scoop (18 at level 1)');
   const pool = new Set(COLORS.slice(0, 4).map(c => c.id));
   check(bag.every(id => pool.has(id)), 'honest: only unlocked colors dealt');
-  state = { level: 1, pendingGift: 'c3' };
-  bag = computeScoopHonest();
-  check(bag.includes('c3') && state.pendingGift === null, 'honest: pending gift always dealt, then cleared');
-  state = { level: 1, pendingGift: 'c9' }; // out-of-pool gift (corrupt/future save)
-  bag = computeScoopHonest();
-  check(!bag.includes('c9') && state.pendingGift === 'c9' && bag.length === 18,
+  const gift = COLORS[3].id; // in the level-1 pool of four
+  state = { level: 1, pendingGift: gift };
+  bag = computeScoopHonest(state);
+  check(bag.includes(gift) && state.pendingGift === null, 'honest: pending gift always dealt, then cleared');
+  const far = COLORS[9].id; // out-of-pool gift (corrupt/future save)
+  state = { level: 1, pendingGift: far };
+  bag = computeScoopHonest(state);
+  check(!bag.includes(far) && state.pendingGift === far && bag.length === 18,
     'honest: out-of-pool gift held for later, bag unharmed');
   const seenH = new Set();
   state = { level: 9, pendingGift: null };
-  for (let t = 0; t < 200; t++) computeScoopHonest().forEach(id => seenH.add(id));
+  for (let t = 0; t < 200; t++) computeScoopHonest(state).forEach(id => seenH.add(id));
   check(seenH.size === 10, `honest: all 10 colors appear across many scoops (got ${seenH.size})`);
 }
 
-// ---- rollNextPerfect: the pours-era rhythm in sorted-bead units ----
+// ---- rollNextPerfect(state): the pours-era rhythm in sorted-bead units ----
 {
-  state = { level: 1, cadenceSorted: 100 }; // scoopBase() = 18 at level 1
+  const state = { level: 1, cadenceSorted: 100 }; // scoopBase = 18 at level 1
   let lo = Infinity, hi = -Infinity;
   for (let t = 0; t < 500; t++){
-    const v = rollNextPerfect();
+    const v = rollNextPerfect(state);
     lo = Math.min(lo, v); hi = Math.max(hi, v);
   }
   check(lo >= 100 + 3 * 18 && hi <= 100 + 8 * 18,
     'cadence: next perfect lands 3-8 scoops of sorted beads ahead');
 }
 
-// ---- scoopFits: the mix bound is a performance backstop (plink-vj7) ----
+// ---- scoopFits(state, mix): the mix bound is a performance backstop ----
 {
-  check(+src.match(/const MIX_CAP = (\d+)/)[1] === MIX_CAP,
-    'mixcap: test stub matches the source constant');
-  state = { level: 1 };
-  check(scoopFits(0), 'mixcap: an empty mix always takes a scoop');
-  check(scoopFits(162) && !scoopFits(163),
+  check(scoopFits({ level: 1 }, 0), 'mixcap: an empty mix always takes a scoop');
+  check(scoopFits({ level: 1 }, MIX_CAP - 18) && !scoopFits({ level: 1 }, MIX_CAP - 17),
     'mixcap: level-1 boundary sits at MIX_CAP minus one small scoop');
-  state = { level: 20 };
-  check(scoopFits(144) && !scoopFits(145),
+  check(scoopFits({ level: 20 }, MIX_CAP - 36) && !scoopFits({ level: 20 }, MIX_CAP - 35),
     'mixcap: full-scoop boundary sits at MIX_CAP minus 36');
 }
 
@@ -274,15 +255,15 @@ check(backfillShelf(0, 8, 1).length === 0, 'backfill: nothing missing -> nothing
 
 // ---- perfect scoop stays sound under a fat hoard ----
 {
-  state = { level: 9, jars: [Array(6).fill('c0'), [], [], [], []] };
-  trayBeads = [...Array(20).fill('c1'), ...Array(9).fill('c2'), 'c0'];
-  const fat = computePerfectScoop();
+  const fat = computePerfectScoop([Array(6).fill('c0'), [], [], [], []],
+    [...Array(20).fill('c1'), ...Array(9).fill('c2'), 'c0']);
   const after = { c0: 7, c1: 20, c2: 9 };
   (fat || []).forEach(id => after[id]++);
   check(fat && fat.length === 12 && Object.values(after).every(v => v % CAP === 0),
     'perfect: fat hoard still lands every color on a multiple of 12');
-  trayBeads = [];
 }
 
 console.log(failures ? `\n${failures} FAILURE(S)` : '\nall gates green');
 process.exit(failures ? 1 : 0);
+
+})().catch(e => { console.error('FAIL gates crashed: ' + (e && e.message)); process.exit(1); });

@@ -634,48 +634,30 @@
   </div>
 </div>
 
-<script>
+<script type="module">
+// The pure rules — palette, composers, cadence, caps, eviction, save
+// migration — live in rules.js and are imported here; this script is the
+// scene: DOM, interaction, audio, persistence. No build step: the browser
+// loads the module natively.
+import { COLORS, CAP, JAR_COUNT, PRESORT_CAP,
+         BUTTONS_PER_JAR, BUTTONS_PER_SLATE, SHAPES, SHAPE_PRICE,
+         colorOf, shapeOf, activeColorCount, decorateBag, matchBonus,
+         scoopFits, rollNextPerfect, computeScoopHonest,
+         computePerfectScoop, evictIndex, normalizeColorId,
+         migrateCadenceNames, seedButtons, backfillShelf } from './rules.js';
 (() => {
   // The deploy timestamp of the exact copy being executed — correct even
   // when served from the service worker cache. Answers "am I stale?"
   console.log('plink · this copy deployed ' + document.lastModified);
-  // Colors unlock in this order, one per cleared tray, starting with four.
-  // The set and order are optimized for perceptual contrast (Lab deltaE):
-  // every pair differs by >=30.5, the starting four by >=68, and each
-  // color clears the felt background by >=35.
-  const COLORS = [
-    { id:'cherry',     name:'cherry',     c:'#e0475c', hi:'#ee9aa5', lo:'#822935' },
-    { id:'jade',       name:'jade',       c:'#43a377', hi:'#98ccb4', lo:'#275f45' },
-    { id:'cornflower', name:'cornflower', c:'#5b7fd6', hi:'#a5b9e8', lo:'#354a7c' },
-    { id:'honey',      name:'honey',      c:'#f2c94c', hi:'#f8e19d', lo:'#8c752c' },
-    { id:'orchid',     name:'orchid',     c:'#c94fc4', hi:'#e19edf', lo:'#752e72' },
-    { id:'pearl',      name:'pearl',      c:'#ece4d4', hi:'#f5f0e7', lo:'#89847b' },
-    { id:'fig',        name:'fig',        c:'#755775', hi:'#b3a3b3', lo:'#443244' },
-    { id:'petal',      name:'petal',      c:'#f2a7c3', hi:'#f8cfde', lo:'#8c6171' },
-    { id:'clementine', name:'clementine', c:'#ef8f3a', hi:'#f6c193', lo:'#8b5322' },
-    { id:'lagoon',     name:'lagoon',     c:'#2f9fa8', hi:'#8dcacf', lo:'#1b5c61' },
-  ];
-  // Left to right, an ascending C-major pentatonic: C5 D5 E5 G5 A5.
-  // Any drop order sounds consonant, so sorting composes little melodies.
+  // Left to right, an ascending C-major pentatonic: C5 D5 E5 G5 A5 — one
+  // fixed tone per jar (JAR_COUNT of them). Any drop order sounds
+  // consonant, so sorting composes little melodies.
   const NOTES = [523.25, 587.33, 659.25, 783.99, 880.00];
-  const JAR_COUNT = NOTES.length;
-  const CAP = 12;
-  const TOTAL_CAP = JAR_COUNT * CAP; // also the perfect-scoop bound (grand-spill rarity is tuned to it)
   const RM = matchMedia('(prefers-reduced-motion: reduce)').matches;
   const PREVIEW = location.hostname === 'localhost' || location.search.includes('preview');
   // Pre-sort sits at the TOP — staging before jars, and jars sit above
   // the tray, so lifting a bead up into pre-sort reads correctly.
   const PRESORT_Y = 24;   // % from top the pre-sort well occupies; first knob to retune
-  // Both wells are bounded by physical room, not pacing (plink-vj7): the
-  // caps are static performance backstops chosen from felt area and what
-  // an older phone paints comfortably (~250 beads on the felt, worst
-  // case), far above any pile real play produces. They gate new arrivals
-  // only — an over-full save keeps its beads and sorts or tips its way
-  // back under the line, so no migration is ever needed.
-  // (Supersedes the 2026-07-18 dish-tracks-scoopBase() rule: capacity is
-  // what fits in the dish, not what fits in a hand.)
-  const MIX_CAP = 180;    // ~5 stacked scoops at full scoop size, ~6 beads deep
-  const presortCap = () => 80; // a genuinely heaped dish, ~7 deep
 
   const tray = document.getElementById('tray');
   const jarsEl = document.getElementById('jars');
@@ -719,45 +701,9 @@
   } catch(e){}
   if (!Array.isArray(state.jars) || state.jars.length !== JAR_COUNT)
     state.jars = Array.from({ length: JAR_COUNT }, () => []);
-  // Saves are a public contract with real players: they may hold colors
-  // retired from the palette (map to kin) or ids this build has never
-  // heard of (a newer build's save meeting a stale cached page — coerce
-  // to a known color). State must only ever contain ids this build
-  // understands, or the scoop composer can deal beads pour() can't make.
-  const RETIRED = { moss:'jade', cocoa:'clementine' };
-  const KNOWN_IDS = new Set(COLORS.map(c => c.id));
-  // Purchasable silhouettes (round is implicit). A bead id is 'cherry'
-  // or 'cherry~star': color before the ~, shape after. Color is the
-  // sorting truth — shapes are garnish per plink-37v.2.
-  const SHAPES = new Set(['star', 'heart', 'cube']);
-  function normalizeColorId(id){
-    const parts = String(id).split('~');
-    const mapped = RETIRED[parts[0]] || parts[0];
-    const color = KNOWN_IDS.has(mapped) ? mapped : COLORS[0].id;
-    return SHAPES.has(parts[1]) ? color + '~' + parts[1] : color;
-  }
-  const BUTTONS_PER_JAR = 1, BUTTONS_PER_SLATE = 10;
-  // Buttons arrived long after her first jars: a save without a balance
-  // is seeded once from its own counters, so existing players open the
-  // catalog already wealthy from work done for its own sake (plink-lr8).
-  // A corrupt balance re-seeds the same way — the counters are the truth.
-  function seedButtons(s){
-    return (typeof s.buttons === 'number' && isFinite(s.buttons) && s.buttons >= 0)
-      ? Math.floor(s.buttons)
-      : (s.shelved || 0) * BUTTONS_PER_JAR + (s.slates || 0) * BUTTONS_PER_SLATE;
-  }
-  // De-slug migration (plink-pbr): the cadence fields once wore the random
-  // bead slug 'uni' (uniSorted / uniNextPerfect / uniGift). Read the old
-  // keys once; leave them in place, frozen, so an older cached page
-  // meeting this save still finds them (keep-in-saves, stop-writing — the
-  // same fossil policy as pourCount/nextPerfect). Never overwrite a new
-  // key that already exists: on a round-tripped save the fossils are stale.
-  function migrateCadenceNames(s){
-    if (!('cadenceSorted' in s) && 'uniSorted' in s) s.cadenceSorted = s.uniSorted;
-    if (!('nextPerfectAt' in s) && 'uniNextPerfect' in s) s.nextPerfectAt = s.uniNextPerfect;
-    if (!('pendingGift' in s) && 'uniGift' in s) s.pendingGift = s.uniGift;
-    return s;
-  }
+  // Saves are a public contract with real players; the normalization and
+  // migration rules (normalizeColorId, migrateCadenceNames, seedButtons)
+  // live in rules.js so the gates import and test them directly.
   state.jars = state.jars.map(jar => jar.map(normalizeColorId));
   if (Array.isArray(state.tray))
     state.tray.forEach(t => { t.id = normalizeColorId(t.id); });
@@ -1111,133 +1057,12 @@
     return Array.from(tray.querySelectorAll('.bead')).filter(inPresort).length;
   }
 
-  function activeColorCount(atLevel){
-    return Math.min(3 + atLevel, COLORS.length);
-  }
-  function colorOf(id){ return String(id).split('~')[0]; }
-  function shapeOf(id){ return String(id).split('~')[1] || 'round'; }
-  const SHAPE_PRICE = 50;   // flat, every silhouette in the catalog
-  const SHAPE_RATE = 1 / 6; // how often a dealt bead wears an owned shape
-  // Dresses a dealt bag in owned silhouettes. A decoration layer only:
-  // colors are untouched, so the composer's math never knows shapes exist.
-  // rnd is injected so the gates can steer it.
-  function decorateBag(bag, owned, rnd){
-    if (!owned || !owned.length) return bag;
-    return bag.map(id =>
-      rnd() < SHAPE_RATE ? id + '~' + owned[Math.floor(rnd() * owned.length)] : id);
-  }
-  const BUTTONS_MATCH_BONUS = 2; // extra for a silhouette-matched jar (tunable)
-  // A full jar whose twelve beads all share a purchased silhouette earns
-  // a little extra — quietly, never announced as a number (plink-37v.2).
-  // Round is the default, not an achievement: all-round jars earn no bonus.
-  function matchBonus(contents){
-    if (!contents.length) return 0;
-    const s = shapeOf(contents[0]);
-    if (s === 'round') return 0;
-    return contents.every(id => shapeOf(id) === s) ? BUTTONS_MATCH_BONUS : 0;
-  }
-  function scoopBase(){
-    return Math.min(16 + state.level * 2, 36);
-  }
-  // A pour is offered only when a whole scoop fits under MIX_CAP — the
-  // gate asks "does a full scoop fit," so a pour never partially spills.
-  function scoopFits(mixCount){
-    return mixCount + scoopBase() <= MIX_CAP;
-  }
-  // Finishing scoops arrive on an unpredictable cadence — a random gap,
-  // re-rolled after each one — and are never announced: the scoop looks
-  // ordinary, and the clean slate is discovered at the last bead. The
-  // cadence counts sorted beads, not pours (tip-back spam must never
-  // summon a grand spill), scaled by a scoop's worth of beads so the
-  // rhythm stays 3-8 scoops.
-  function rollNextPerfect(){
-    return state.cadenceSorted + (3 + Math.floor(Math.random() * 6)) * scoopBase();
-  }
-
-  // No topping, no room math — physical reversibility (tip-back) is what
-  // guarantees the player is never stuck, so the scoop itself can be
-  // honest random (clumpy, lucky, textured). Never returns null; a
-  // newly-unlocked color is force-included once so the gift never whiffs.
-  function computeScoopHonest(){
-    const pool = COLORS.slice(0, activeColorCount(state.level)).map(c => c.id);
-    const size = scoopBase();
-    const bag = [];
-    if (state.pendingGift && pool.includes(state.pendingGift)){
-      bag.push(state.pendingGift);
-      state.pendingGift = null;
-    }
-    while (bag.length < size) bag.push(pool[Math.floor(Math.random() * pool.length)]);
-    for (let i = bag.length - 1; i > 0; i--){
-      const j = Math.floor(Math.random() * (i + 1));
-      [bag[i], bag[j]] = [bag[j], bag[i]];
-    }
-    return bag;
-  }
-
-  // Jars shelved before history recording existed live only in the
-  // counter; synthesize their entries once. Colors follow the unlock
-  // curve (early jars draw from the small early pool), entries are
-  // flagged s:1 with t:null so a shelf UI can group them honestly as
-  // "before records", and the PRNG is seeded from the save so the same
-  // save always backfills identically (the result may not be persisted
-  // until the first real action).
-  function backfillShelf(missing, level, seed){
-    let s = (Math.imul(seed, 2654435761) + missing * 97 + level) >>> 0;
-    const rnd = () => {
-      s = (s + 0x6D2B79F5) >>> 0;
-      let t = Math.imul(s ^ (s >>> 15), s | 1);
-      t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
-      return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
-    };
-    const out = [];
-    for (let k = 0; k < missing; k++){
-      const levelAt = 1 + Math.floor(((k + 1) / (missing + 1)) * Math.max(0, level - 1));
-      const pool = activeColorCount(levelAt);
-      out.push({ c: COLORS[Math.floor(rnd() * pool)].id, t: null, s: 1 });
-    }
-    return out;
-  }
-
-  // A "finishing scoop": exactly the beads that finish every color in
-  // play — completing every partial jar AND giving every held tray
-  // leftover a full set — so perfect sorting shelves everything: a clean
-  // slate. Every non-empty jar must be uniform. A color with more than a
-  // jar's worth in play completes across that many jars; that is always
-  // schedulable because each finished jar shelves and frees its seat.
-  // Invariant-safe by construction: after this pour every color in play
-  // totals a multiple of CAP, so a shelve is always live.
-  function computePerfectScoop(){
-    const have = {}, jarsOf = {};
-    for (const jar of state.jars){
-      if (!jar.length) continue;
-      const c = colorOf(jar[0]);
-      if (!jar.every(id => colorOf(id) === c)) return null;
-      have[c] = (have[c] || 0) + jar.length;
-      jarsOf[c] = (jarsOf[c] || 0) + 1;
-    }
-    tray.querySelectorAll('.bead').forEach(b => {
-      const c = colorOf(b.dataset.color);
-      have[c] = (have[c] || 0) + 1;
-    });
-    const bag = [];
-    for (const c in have){
-      const jarsNeeded = Math.max(jarsOf[c] || 0, Math.ceil(have[c] / CAP));
-      for (let k = have[c]; k < jarsNeeded * CAP; k++) bag.push(c);
-    }
-    // Bounded by one full tray. Simulation note: steady-state "finish
-    // everything" needs cluster around 50-58 beads, so a lower cap makes
-    // finishing scoops near-mythical (~1 per 1000 pours at cap 40-56 vs
-    // ~1 per 10 at 60). The rare grand spill is the feature.
-    if (!bag.length || bag.length > TOTAL_CAP) return null;
-    for (let i = bag.length - 1; i > 0; i--){
-      const j = Math.floor(Math.random() * (i + 1));
-      [bag[i], bag[j]] = [bag[j], bag[i]];
-    }
-    return bag;
-  }
+  // The composers, cadence, and caps live in rules.js; the tray is handed
+  // to them as an array of bead ids, never as DOM.
+  const trayIds = () => Array.from(tray.querySelectorAll('.bead')).map(b => b.dataset.color);
 
   function pour(withSound){
-    if (!scoopFits(mixLeft())){
+    if (!scoopFits(state, mixLeft())){
       // Same quiet grammar as a full jar or dish — a low tone and a plain
       // sentence, never a wiggle or an error voice.
       tone(150, { vol:0.08, dur:0.1 });
@@ -1246,12 +1071,12 @@
     }
     let bag = null, dealtPerfect = false;
     if (state.cadenceSorted >= state.nextPerfectAt){
-      bag = computePerfectScoop();
+      bag = computePerfectScoop(state.jars, trayIds());
       dealtPerfect = !!bag;
     }
-    if (!bag) bag = computeScoopHonest(); // never null — the pour never refuses
+    if (!bag) bag = computeScoopHonest(state); // never null — the pour never refuses
     bag = decorateBag(bag, state.owned, Math.random);
-    if (dealtPerfect) state.nextPerfectAt = rollNextPerfect();
+    if (dealtPerfect) state.nextPerfectAt = rollNextPerfect(state);
     centerStack.hidden = true;
     clearedMsg.innerHTML = '';
     const pts = scatterPositions(bag.length);
@@ -1404,7 +1229,7 @@
       clampedY = clampedY < PRESORT_Y ? PRESORT_Y - dead : PRESORT_Y + dead;
     // Pre-sort has a real, physical bound, so a dish that's already full
     // bounces a new arrival back, same grammar as a full jar.
-    if (!wasPresort && clampedY < PRESORT_Y && presortCount() >= presortCap()){
+    if (!wasPresort && clampedY < PRESORT_Y && presortCount() >= PRESORT_CAP){
       clampedY = PRESORT_Y + Math.max(6, dead);
       tone(150, { vol:0.1, dur:0.12 });
       announce('the pre-sort dish is full');
@@ -1555,19 +1380,6 @@
     }, RM ? 200 : 1100);
   }
 
-  // The bead to take back: from the jar's minority color (the odd ones
-  // out leave first), newest of that color. A single-color jar behaves
-  // like a plain undo.
-  function evictIndex(contents){
-    const counts = {};
-    contents.forEach(id => { const c = colorOf(id); counts[c] = (counts[c] || 0) + 1; });
-    let min = Infinity;
-    for (const c in counts) min = Math.min(min, counts[c]);
-    let best = -1;
-    contents.forEach((id, i) => { if (counts[colorOf(id)] === min) best = Math.max(best, i); });
-    return best;
-  }
-
   function reflowMinis(fill){
     Array.from(fill.querySelectorAll('.mini')).forEach((m, j) => {
       const [x, y] = slotPos(j);
@@ -1670,7 +1482,7 @@
   function updatePourUI(){
     // The pill dims while a scoop wouldn't fit; it stays tappable so the
     // refusal can speak (a silent no-op reads as broken, not full).
-    const fits = scoopFits(mixLeft());
+    const fits = scoopFits(state, mixLeft());
     pourBtn.classList.toggle('noroom', !fits);
     pourBtn.setAttribute('aria-disabled', String(!fits));
     if (mixLeft() === 0) return; // trayCleared owns the full celebration

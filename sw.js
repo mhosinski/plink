@@ -2,8 +2,12 @@
 // Strategy: stale-while-revalidate — serve from cache instantly, refresh
 // the cache from the network in the background, so an installed app
 // works offline and picks up each deploy on its next launch.
-const CACHE = 'plink-v1';
-const ASSETS = ['./', './index.html', './manifest.webmanifest',
+// index.html and rules.js are a matched pair (the import surface must
+// agree). Bump CACHE whenever that surface changes, not just when the
+// asset list does: install-time addAll re-caches the pair atomically,
+// closing the skew window a runtime refresh could leave.
+const CACHE = 'plink-v2';
+const ASSETS = ['./', './index.html', './rules.js', './manifest.webmanifest',
                 './icon-192.png', './icon-512.png', './icon-180.png'];
 
 self.addEventListener('install', e => {

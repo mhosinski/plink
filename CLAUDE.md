@@ -173,13 +173,16 @@ using it for parked work loses the fact that real items remain.
 
 ## Build, Run & Deploy
 
-There is no build step: the game is a single self-contained `index.html`
-(vanilla JS, inline CSS, Web Audio — no dependencies), plus thin PWA
-satellites: `manifest.webmanifest`, `sw.js`, and generated `icon-*.png`.
-The service worker is stale-while-revalidate, so installed apps play
-offline and pick up a deploy on their **next** launch (curl-based deploy
-verification is unaffected — it hits the network). If the asset list in
-`sw.js` changes, bump its `CACHE` version string.
+There is no build step: the game is `index.html` (the scene — DOM,
+interaction, audio, inline CSS) plus `rules.js` (the pure rules as a
+native ES module the browser loads directly; vanilla JS, no
+dependencies), and thin PWA satellites: `manifest.webmanifest`, `sw.js`,
+and generated `icon-*.png`. The service worker is stale-while-revalidate,
+so installed apps play offline and pick up a deploy on their **next**
+launch (curl-based deploy verification is unaffected — it hits the
+network). `index.html` and `rules.js` are a matched pair: bump `sw.js`'s
+`CACHE` version string whenever the import/export surface between them
+changes, or when the asset list changes.
 
 ```bash
 python3 -m http.server 8000        # run locally → http://localhost:8000
@@ -194,7 +197,9 @@ deploy on a device.
 
 ## Architecture Overview
 
-Everything lives in `index.html`, in this order:
+Pure rules — palette, composers, cadence, caps, eviction, save
+migration — live in `rules.js`; everything else lives in `index.html`,
+in this order:
 
 - **CSS scene** — the committed single-theme art direction (walnut wood,
   spruce felt tray, glass jars). No cards or web chrome; the scene is the UI.
@@ -229,9 +234,9 @@ Everything lives in `index.html`, in this order:
   celebration per pour — kills the jar-evict-jar level loop), and
   `evictIndex()` (minority-color take-back). The old orchestrated
   composer was deleted with the `UNI` flag (plink-pbr); bead counts are
-  always derived from the DOM, never from a parallel counter.
-  `tests/run.js` extracts rules from `index.html` by function-name
-  markers — renaming those functions requires updating the markers.
+  always derived from the DOM, never from a parallel counter. Rule
+  functions take `state` (or jars/tray ids) as explicit arguments —
+  rules.js never touches the DOM or module globals.
 
 ## Design Rules (invariants, not preferences)
 
@@ -259,12 +264,14 @@ Everything lives in `index.html`, in this order:
 
 Use tests to protect core rules and formulas, not to simulate the full runtime.
 
-Pure logic that must stay under test (via `tests/run.js` extraction): the
-honest composer (gift-never-whiffs, pool discipline, no color starving),
-the perfect-scoop cadence window, eviction order, save migration
-(`normalizeColorId`, `migrateCadenceNames`, and kin), and any future rule
-with the same shape (shelving conditions, palette distances, level
-pacing).
+Pure logic that must stay under test (imported from `rules.js` by
+`tests/run.js`): the honest composer (gift-never-whiffs, pool discipline,
+no color starving), the perfect-scoop cadence window, eviction order,
+save migration (`normalizeColorId`, `migrateCadenceNames`, and kin), and
+any future rule with the same shape (shelving conditions, palette
+distances, level pacing). New rules belong in `rules.js` from the start;
+`index.html`'s inline script is still syntax- and boot-checked by the
+gates, with its import statement bound to the real exports.
 
 Avoid brittle automated tests for runtime-heavy behavior: drag feel,
 animations, Web Audio output, iOS quirks, layout. For those, do a manual
@@ -279,7 +286,7 @@ to test or reuse. Do not add abstractions solely to satisfy a test.
 For every new feature, implement in this sequence:
 
 1. Constants / palette / state-schema changes (with save migration)
-2. Pure rule logic (composable, extractable by `tests/run.js`)
+2. Pure rule logic (in `rules.js`, imported by `tests/run.js`)
 3. DOM & interaction wiring (pointer, keyboard, aria)
 4. Scene polish: CSS, motion (with reduced-motion path), sound (consonant)
 5. Extend `tests/run.js` when the change touches rules or invariants
