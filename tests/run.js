@@ -2,9 +2,9 @@
 // Quality gates for plink. No dependencies; run with: node tests/run.js
 //
 // The pure rules live in rules.js (a native ES module) and are imported
-// here directly — no extraction, no stub constants. index.html's inline
-// module script is still syntax- and boot-checked: its import statement
-// is replaced by parameters bound to the real rules exports.
+// here directly — no extraction, no stub constants. game.js (the scene
+// script) is still syntax- and boot-checked: its import statement is
+// replaced by parameters bound to the real rules exports.
 
 const fs = require('fs');
 const path = require('path');
@@ -12,6 +12,7 @@ const { pathToFileURL } = require('url');
 
 const root = path.join(__dirname, '..');
 const src = fs.readFileSync(path.join(root, 'index.html'), 'utf8');
+const js = fs.readFileSync(path.join(root, 'game.js'), 'utf8');
 
 let failures = 0;
 function check(cond, label) {
@@ -31,9 +32,10 @@ const {
 } = R;
 
 // ---- the scene script: import surface, syntax, boot ----
-const js = src.match(/<script type="module">([\s\S]*)<\/script>/)[1];
+check(src.includes('src="./game.js"') && src.includes('href="./styles.css"'),
+  'wiring: index.html loads game.js and styles.css');
 const importMatch = js.match(/import\s*\{([\s\S]*?)\}\s*from\s*'\.\/rules\.js';/);
-check(!!importMatch, 'wiring: index.html imports rules.js');
+check(!!importMatch, 'wiring: game.js imports rules.js');
 const importedNames = importMatch[1].split(',').map(s => s.trim()).filter(Boolean);
 check(importedNames.every(n => n in R),
   'wiring: every imported name is exported by rules.js (' +
@@ -87,10 +89,11 @@ for (const icon of manifest.icons)
   fs.statSync(path.join(root, icon.src)); // throws if an icon file is missing
 const swSrc = fs.readFileSync(path.join(root, 'sw.js'), 'utf8');
 new Function(swSrc);
-if (!src.includes('manifest.webmanifest') || !src.includes('serviceWorker'))
-  throw new Error('index.html does not wire up the PWA');
-check(swSrc.includes("'./rules.js'") && swSrc.includes("'./index.html'"),
-  'wiring: sw.js precaches the index.html + rules.js pair');
+if (!src.includes('manifest.webmanifest') || !js.includes('serviceWorker'))
+  throw new Error('the PWA is not wired up (manifest in index, sw registration in game.js)');
+check(['./index.html', './game.js', './styles.css', './rules.js']
+    .every(a => swSrc.includes("'" + a + "'")),
+  'wiring: sw.js precaches the whole matched set');
 
 // ---- evictIndex: minority color leaves first, newest of that color ----
 check(evictIndex(['a', 'a', 'b', 'a']) === 2, 'evict: minority first');

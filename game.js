@@ -1,0 +1,1386 @@
+// The pure rules — palette, composers, cadence, caps, eviction, save
+// migration — live in rules.js and are imported here; this script is the
+// scene: DOM, interaction, audio, persistence. No build step: the browser
+// loads the module natively.
+import { COLORS, CAP, JAR_COUNT, PRESORT_CAP,
+         BUTTONS_PER_JAR, BUTTONS_PER_SLATE, SHAPES, SHAPE_PRICE,
+         colorOf, shapeOf, activeColorCount, decorateBag, matchBonus,
+         scoopFits, rollNextPerfect, computeScoopHonest,
+         computePerfectScoop, evictIndex, normalizeColorId,
+         migrateCadenceNames, seedButtons, backfillShelf } from './rules.js';
+(() => {
+  // The deploy timestamp of the exact copy being executed — correct even
+  // when served from the service worker cache. Answers "am I stale?"
+  console.log('plink · this copy deployed ' + document.lastModified);
+  // Left to right, an ascending C-major pentatonic: C5 D5 E5 G5 A5 — one
+  // fixed tone per jar (JAR_COUNT of them). Any drop order sounds
+  // consonant, so sorting composes little melodies.
+  const NOTES = [523.25, 587.33, 659.25, 783.99, 880.00];
+  const RM = matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const PREVIEW = location.hostname === 'localhost' || location.search.includes('preview');
+  // Pre-sort sits at the TOP — staging before jars, and jars sit above
+  // the tray, so lifting a bead up into pre-sort reads correctly.
+  const PRESORT_Y = 24;   // % from top the pre-sort well occupies; first knob to retune
+
+  const tray = document.getElementById('tray');
+  const jarsEl = document.getElementById('jars');
+  const statsEl = document.getElementById('stats');
+  const hintEl = document.getElementById('hint');
+  const centerStack = document.getElementById('centerStack');
+  const clearedMsg = document.getElementById('clearedMsg');
+  const pourBtn = document.getElementById('pourBtn');
+  const soundBtn = document.getElementById('soundBtn');
+  const logoDot = document.getElementById('logoDot');
+  const sr = document.getElementById('sr');
+  let dumpBtn = null; // the tip-back verb pill; built at boot with the wells
+  let presortHintEl = null; // the one-time pre-sort whisper
+
+  /* ---------- state ---------- */
+  const KEY = 'plink-v2';
+  let state = { sorted:0, shelved:0, slates:0, level:1,
+                sound:true, hinted:false, hinted2:false, hinted3:false, jars:null, tray:[],
+                shelf:[],   // one {c, t} per shelved jar, in finished order; jars
+                            // shelved before this existed live only in the counter
+                buttons:null, // craft currency; null = not yet seeded (plink-lr8)
+                owned:[],     // purchased shape unlocks
+                // Perfect-scoop cadence counts sorted beads, not pours, so
+                // tip-back spam can never summon a grand spill; 0 means the
+                // very first pour is allowed to try for one.
+                cadenceSorted:0, nextPerfectAt:0,
+                pendingGift:null,    // a just-unlocked color the next honest scoop must include
+                presortHinted:false, // the pre-sort whisper has been seen and answered
+                cleared:false };     // this tray already celebrated; the next pour re-arms it
+                                     // (kills the jar-evict-jar level loop, which predates the wells)
+  try {
+    const raw = localStorage.getItem(KEY);
+    if (raw) state = Object.assign(state, migrateCadenceNames(JSON.parse(raw)));
+    else {
+      const old = localStorage.getItem('plink-v1');
+      if (old){
+        const o = JSON.parse(old);
+        ['sorted','shelved','sound','hinted'].forEach(k => { if (k in o) state[k] = o[k]; });
+      }
+    }
+  } catch(e){}
+  if (!Array.isArray(state.jars) || state.jars.length !== JAR_COUNT)
+    state.jars = Array.from({ length: JAR_COUNT }, () => []);
+  // Saves are a public contract with real players; the normalization and
+  // migration rules (normalizeColorId, migrateCadenceNames, seedButtons)
+  // live in rules.js so the gates import and test them directly.
+  state.jars = state.jars.map(jar => jar.map(normalizeColorId));
+  if (Array.isArray(state.tray))
+    state.tray.forEach(t => { t.id = normalizeColorId(t.id); });
+  // The pending gift is a bare color; normalize it like everything else.
+  state.pendingGift = state.pendingGift ? normalizeColorId(state.pendingGift).split('~')[0] : null;
+  if (Array.isArray(state.shelf))
+    state.shelf.forEach(s => {
+      s.c = normalizeColorId(s.c);
+      if (Array.isArray(s.b)) s.b = s.b.map(normalizeColorId);
+    });
+  state.buttons = seedButtons(state);
+  state.owned = (Array.isArray(state.owned) ? state.owned : []).filter(s => SHAPES.has(s));
+  if (!Array.isArray(state.shelf)) state.shelf = [];
+  if (state.shelved > state.shelf.length)
+    state.shelf = backfillShelf(state.shelved - state.shelf.length, state.level, state.sorted)
+      .concat(state.shelf);
+  function syncTray(){
+    state.tray = Array.from(tray.querySelectorAll('.bead')).map(b => ({
+      id: b.dataset.color,
+      x: parseFloat(b.style.left) || 50,
+      y: parseFloat(b.style.top) || 50,
+    }));
+  }
+  function save(){
+    syncTray();
+    try { localStorage.setItem(KEY, JSON.stringify(state)); } catch(e){}
+  }
+
+  /* ---------- audio ---------- */
+  // iOS: without this, Web Audio is silenced by the ring/silent switch.
+  try { if ('audioSession' in navigator) navigator.audioSession.type = 'playback'; } catch(e){}
+  let ctx = null;
+  function ac(){
+    if (!ctx) ctx = new (window.AudioContext || window.webkitAudioContext)();
+    if (ctx.state !== 'running') ctx.resume();
+    return ctx;
+  }
+  // iOS unlocks audio only inside a user gesture; prime it with a silent
+  // buffer on the first touch/click anywhere.
+  function unlockAudio(){
+    const a = ac();
+    const src = a.createBufferSource();
+    src.buffer = a.createBuffer(1, 1, 22050);
+    src.connect(a.destination);
+    src.start(0);
+  }
+  document.addEventListener('pointerup', unlockAudio, { once:true });
+  document.addEventListener('touchend', unlockAudio, { once:true });
+  document.addEventListener('visibilitychange', () => {
+    if (!document.hidden && ctx && ctx.state !== 'running') ctx.resume();
+  });
+  function tone(freq, { vol=0.22, dur=0.4, delay=0, type='triangle' } = {}){
+    if (!state.sound) return;
+    const a = ac(), t = a.currentTime + delay;
+    const g = a.createGain();
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(vol, t + 0.008);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    g.connect(a.destination);
+    const o = a.createOscillator();
+    o.type = type; o.frequency.value = freq;
+    o.connect(g); o.start(t); o.stop(t + dur + 0.05);
+    const g2 = a.createGain();
+    g2.gain.setValueAtTime(0.0001, t);
+    g2.gain.exponentialRampToValueAtTime(vol * 0.28, t + 0.006);
+    g2.gain.exponentialRampToValueAtTime(0.0001, t + dur * 0.45);
+    g2.connect(a.destination);
+    const o2 = a.createOscillator();
+    o2.type = 'sine'; o2.frequency.value = freq * 2.01;
+    o2.connect(g2); o2.start(t); o2.stop(t + dur);
+  }
+  // One bead landing on felt: a tiny soft pat — a single grain of
+  // bandpassed noise. Deliberately NO tonal body (a pitched knock reads
+  // heavy), and no instant-peak attack either: felt compresses before it
+  // pushes back, so each grain ramps in over ~3ms — that ramp is the
+  // difference between "pat" and the ticky click of a hard transient.
+  function feltTick(t, vel){
+    const a = ac();
+    const dur = 0.012 + Math.random() * 0.025;
+    const len = Math.ceil(a.sampleRate * (dur + 0.008));
+    const buf = a.createBuffer(1, len, a.sampleRate);
+    const d = buf.getChannelData(0);
+    for (let i = 0; i < len; i++) d[i] = Math.random() * 2 - 1;
+    const src = a.createBufferSource(); src.buffer = buf;
+    const bp = a.createBiquadFilter(); bp.type = 'bandpass';
+    bp.frequency.value = 600 + Math.random() * 700 + vel * 300;
+    bp.Q.value = 0.9;
+    const g = a.createGain();
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.linearRampToValueAtTime(0.02 + vel * 0.05, t + 0.003);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    src.connect(bp); bp.connect(g); g.connect(a.destination);
+    src.start(t);
+  }
+  // Pouring n beads: a light patter — grains bunched where the spill is
+  // thickest, thinning to stragglers. Every grain's time, pitch and level
+  // is random, so nothing repeats evenly enough to read as a rhythm and
+  // no two pours sound alike.
+  function pourSound(n){
+    if (!state.sound) return;
+    const a = ac(), t0 = a.currentTime + 0.18;
+    const grains = Math.min(4 + n, 26);
+    const span = Math.max(0.3, n * 0.03);
+    for (let i = 0; i < grains; i++){
+      const frac = Math.pow(Math.random(), 1.6); // dense early, sparse tail
+      feltTick(t0 + frac * span + Math.random() * 0.04,
+               Math.random() * (1 - frac * 0.5));
+    }
+  }
+  // Haptics exist only inside the native shell (iOS web has no vibration
+  // API). Kept subtle and physical, mirroring the sounds: a light tap
+  // when a bead settles, a cap-thump-and-shelf-slide when a jar shelves,
+  // a cascade when a scoop pours, a success pattern on a clean slate.
+  // Never for refusals — feel follows the no-judgment rule too.
+  const HAPTICS = window.Capacitor && window.Capacitor.Plugins &&
+    window.Capacitor.Plugins.Haptics;
+  function tap(style){
+    if (HAPTICS) HAPTICS.impact({ style }).catch(() => {});
+  }
+  function tapSuccess(){
+    if (HAPTICS) HAPTICS.notification({ type: 'SUCCESS' }).catch(() => {});
+  }
+  // The cap thumps on, the jar slides across the shelf, and settles with
+  // a soft stop. The slide is selection ticks at 22ms — dense enough to
+  // fuse into one even zipper texture (55ms read as discrete bumps, 30ms
+  // was close). Don't go below ~20ms: a Taptic transient takes ~15-20ms
+  // and tighter schedules swallow ticks, reading weaker instead of
+  // smoother. Whole gesture ends by ~600ms, before the 1100ms shelf swap.
+  function tapShelve(){
+    if (!HAPTICS) return;
+    HAPTICS.impact({ style:'HEAVY' }).catch(() => {});
+    HAPTICS.selectionStart().catch(() => {});
+    for (let i = 0; i < 15; i++)
+      setTimeout(() => HAPTICS.selectionChanged().catch(() => {}), 260 + i * 22);
+    setTimeout(() => {
+      HAPTICS.selectionEnd().catch(() => {});
+      HAPTICS.impact({ style:'LIGHT' }).catch(() => {});
+    }, 260 + 15 * 22);
+  }
+  // Beads raining onto the felt: impacts ride the 30ms landing stagger,
+  // heavy at first contact, lighter through the tail — the tactile twin of
+  // pourSound's felt patter. Sampled so a grand spill stretches
+  // the rhythm out instead of flooding the native bridge.
+  function tapCascade(n){
+    if (!HAPTICS || n < 1) return;
+    const step = Math.max(1, Math.ceil(n / 16));
+    for (let i = 0; i < n; i += step){
+      const style = i === 0 ? 'HEAVY' : (i < n * 0.4 ? 'MEDIUM' : 'LIGHT');
+      setTimeout(() => HAPTICS.impact({ style }).catch(() => {}), 180 + i * 30);
+    }
+  }
+
+  function arpeggio(base){
+    [1, 1.125, 1.25, 1.5, 2].forEach((r, i) => tone(base * r, { delay: i * 0.085, vol: 0.16, dur: 0.5 }));
+  }
+  function clearChime(){ tone(659.25, { vol:0.14 }); tone(880, { delay:0.12, vol:0.14 }); }
+
+  /* ---------- bead faces ---------- */
+  // Every bead — round included — wears the same SVG face: an underside
+  // layer in the shadow color with the gradient face offset atop it, a
+  // gloss, and the hole. One construction means the four shapes can only
+  // ever read as siblings. Paths are drawn to equal visual mass, sized
+  // for the round-join stroke below that softens every point and lobe
+  // (craft beads never have knife edges). Declared before the jar
+  // section: addMini renders faces while restoring jars at startup.
+  const SHAPE_PATHS = {
+    round: 'M2.6,12A9.4,9.4,0,1,1,21.4,12A9.4,9.4,0,1,1,2.6,12Z',
+    star: 'M12,1.2L15.41,7.31L22.27,8.66L17.52,13.79L18.35,20.74L12,17.8L5.65,20.74L6.48,13.79L1.73,8.66L8.59,7.31Z',
+    heart: 'M12,21.1C8.7,18.3,2.0,13.5,2.0,8.5C2.0,5.1,4.6,2.9,7.4,2.9C9.4,2.9,11.1,4.1,12,5.8C12.9,4.1,14.6,2.9,16.6,2.9C19.4,2.9,22.0,5.1,22.0,8.5C22.0,13.5,15.3,18.3,12,21.1Z',
+    cube: 'M8,3.6L16,3.6Q20.4,3.6,20.4,8L20.4,16Q20.4,20.4,16,20.4L8,20.4Q3.6,20.4,3.6,16L3.6,8Q3.6,3.6,8,3.6Z',
+  };
+  let faceSeq = 0;
+  function shapeFace(shape, col){
+    const d = SHAPE_PATHS[shape] || SHAPE_PATHS.round;
+    const g = 'bf' + (++faceSeq); // gradient ids must be unique per instance
+    const soft = 'stroke-width="2" stroke-linejoin="round" stroke-linecap="round" paint-order="stroke"';
+    return '<svg class="face" viewBox="0 0 24 24" aria-hidden="true">' +
+      '<defs><radialGradient id="' + g + '" cx="34%" cy="30%" r="78%">' +
+      '<stop offset="0%" stop-color="' + col.hi + '"/>' +
+      '<stop offset="52%" stop-color="' + col.c + '"/>' +
+      '<stop offset="100%" stop-color="' + col.lo + '"/></radialGradient></defs>' +
+      '<path d="' + d + '" fill="' + col.lo + '" stroke="' + col.lo + '" ' + soft + '/>' +
+      '<path d="' + d + '" transform="translate(0.07,-0.13) scale(0.965)" fill="url(#' + g +
+        ')" stroke="url(#' + g + ')" ' + soft + '/>' +
+      '<ellipse cx="8.8" cy="7.4" rx="2.5" ry="1.6" transform="rotate(-25 8.8 7.4)" fill="rgba(255,255,255,.5)"/>' +
+      '<circle cx="12" cy="12" r="4.3" fill="rgba(15,8,5,.8)"/>' +
+      '<circle cx="11.5" cy="11.4" r="3.3" fill="rgba(60,30,20,.6)"/>' +
+      '</svg>';
+  }
+
+  /* ---------- jars ---------- */
+  const jarEls = [];
+  // Beads mid-flight to a jar hold their slot before state.jars sees them;
+  // without this, two quick drops capture the same slot and the second
+  // mini renders hidden behind the first (and a jar can overfill past CAP).
+  const jarPending = [];
+  const SLOT_JITTER = [];
+  for (let i = 0; i < CAP; i++) SLOT_JITTER.push([Math.random()*6-3, Math.random()*4-2]);
+  function slotPos(i){
+    const col = i % 3, row = Math.floor(i / 3);
+    return [12 + col * 31 + SLOT_JITTER[i][0], 3 + row * 21 + SLOT_JITTER[i][1]];
+  }
+  function jarLabel(i){
+    return 'Jar ' + (i + 1) + ', ' + state.jars[i].length + ' of ' + CAP +
+      ' beads. Press to take the last bead back; hold or shift-press to empty.';
+  }
+  const HOLD_MS = 500;
+  for (let i = 0; i < JAR_COUNT; i++){
+    const b = document.createElement('button');
+    b.className = 'jar';
+    b.dataset.index = i;
+    b.setAttribute('aria-label', jarLabel(i));
+    b.innerHTML = '<span class="glass"><span class="fill"></span><span class="lid"></span></span>';
+    jarsEl.appendChild(b);
+    jarEls.push(b);
+    state.jars[i].forEach((beadId, idx) => {
+      const col = COLORS.find(c => c.id === colorOf(beadId)) || COLORS[0];
+      addMini(i, col, idx, false, shapeOf(beadId));
+    });
+    let holdTimer = 0, holdFired = false;
+    const cancelHold = () => clearTimeout(holdTimer);
+    b.addEventListener('pointerdown', () => {
+      if (heldBead || b.dataset.busy) return;
+      holdFired = false;
+      holdTimer = setTimeout(() => { holdFired = true; pourBack(i, CAP); }, HOLD_MS);
+    });
+    b.addEventListener('pointerup', cancelHold);
+    b.addEventListener('pointerleave', cancelHold);
+    b.addEventListener('pointercancel', cancelHold);
+    b.addEventListener('click', () => {
+      if (heldBead){ attemptDrop(heldBead, b); return; }
+      if (holdFired){ holdFired = false; return; }
+      pourBack(i, 1);
+    });
+    b.addEventListener('keydown', ev => {
+      if (ev.key === 'Enter' && ev.shiftKey && !heldBead){
+        ev.preventDefault();
+        pourBack(i, CAP);
+      }
+    });
+  }
+  function addMini(jarIndex, col, index, animate, shape = 'round'){
+    const fill = jarEls[jarIndex].querySelector('.fill');
+    const m = document.createElement('span');
+    m.className = 'mini' + (animate && !RM ? ' drop-in' : '');
+    m.innerHTML = shapeFace(shape, col);
+    const [x, y] = slotPos(index);
+    m.style.left = x + '%';
+    m.style.bottom = y + '%';
+    fill.appendChild(m);
+  }
+  function sparkle(jar, count = 6){
+    const glass = jar.querySelector('.glass');
+    for (let i = 0; i < count; i++){
+      const s = document.createElement('span');
+      s.className = 'spark';
+      s.textContent = '✦';
+      s.style.left = (20 + Math.random() * 60) + '%';
+      s.style.top = (Math.random() * 40) + '%';
+      s.style.setProperty('--sx', (Math.random() * 50 - 25) + 'px');
+      s.style.setProperty('--sy', (-25 - Math.random() * 30) + 'px');
+      glass.appendChild(s);
+      setTimeout(() => s.remove(), 800);
+    }
+  }
+
+  /* ---------- stats ---------- */
+  function fmt(n){ return n.toLocaleString(); }
+  function localDate(){
+    const d = new Date();
+    return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') +
+      '-' + String(d.getDate()).padStart(2, '0');
+  }
+  function renderStats(){
+    statsEl.innerHTML = '<b>' + fmt(state.sorted) + '</b> beads sorted &nbsp;&middot;&nbsp; <b>' +
+      fmt(state.shelved) + '</b> ' + (state.shelved === 1 ? 'jar' : 'jars') + ' shelved' +
+      (state.slates > 0 ? ' &nbsp;&middot;&nbsp; <b>' + fmt(state.slates) + '</b> clean ' +
+        (state.slates === 1 ? 'slate' : 'slates') : '');
+  }
+  renderStats();
+  const TAKEBACK_HINT = 'tap a jar to take a bead back · hold to pour it all out';
+  if (state.hinted2) hintEl.classList.add('gone');
+  else if (state.hinted) hintEl.textContent = TAKEBACK_HINT;
+
+  /* ---------- beads ---------- */
+  // Bead counts are always derived from the DOM (mixLeft/presortCount) —
+  // a parallel counter drifted once (the evict exploit) and is retired.
+  let heldBead = null;
+  let pendingSlateExtra = null; // non-null while caps that finish a clean slate are landing
+
+  function makeBead(col, xPct, yPct, stagger, fall = true, id = col.id){
+    const b = document.createElement('button');
+    b.className = 'bead';
+    b.dataset.color = id; // full identity, shape included; col paints it
+    const shape = shapeOf(id);
+    b.innerHTML = shapeFace(shape, col);
+    b.setAttribute('aria-label', (shape !== 'round' ? shape + ' ' : '') + col.name + ' bead');
+    b.style.left = xPct + '%';
+    b.style.top = yPct + '%';
+    if (!RM && fall){
+      b.classList.add('landing');
+      b.style.animationDelay = (stagger * 30) + 'ms';
+      b.addEventListener('animationend', () => b.classList.remove('landing'), { once:true });
+    }
+    attachDrag(b);
+    b.addEventListener('keydown', ev => {
+      if (ev.key === 'Enter' || ev.key === ' '){
+        ev.preventDefault();
+        setHeld(heldBead === b ? null : b);
+      }
+    });
+    tray.appendChild(b);
+    return b;
+  }
+
+  function setHeld(b){
+    if (heldBead) heldBead.classList.remove('held');
+    heldBead = b;
+    if (b){
+      b.classList.add('held');
+      announce('Picked up ' + colorOf(b.dataset.color) + ' bead. Choose a jar.');
+    }
+  }
+
+  // Every dealer (pour, jar pour-back, preview deals) scatters into the
+  // mix well — beads only ever enter pre-sort by the player's hand.
+  function scatterPositions(n, minY = PRESORT_Y + 6, maxY = 88){
+    const pts = [];
+    for (let i = 0; i < n; i++){
+      let best = null, bestD = -1;
+      for (let attempt = 0; attempt < 14; attempt++){
+        const x = 10 + Math.random() * 80;
+        const y = minY + Math.random() * (maxY - minY);
+        let d = Infinity;
+        for (const p of pts) d = Math.min(d, Math.hypot(p[0]-x, (p[1]-y)*0.6));
+        if (d > bestD){ bestD = d; best = [x, y]; }
+        if (d > 13) break;
+      }
+      pts.push(best);
+    }
+    return pts;
+  }
+
+  // Compartment membership is purely positional (no stored field, no
+  // migration) — a bead is "in pre-sort" if it sits past the seam line.
+  function inPresort(bead){ return parseFloat(bead.style.top) < PRESORT_Y; }
+  function mixLeft(){
+    return Array.from(tray.querySelectorAll('.bead')).filter(b => !inPresort(b)).length;
+  }
+  function presortCount(){
+    return Array.from(tray.querySelectorAll('.bead')).filter(inPresort).length;
+  }
+
+  // The composers, cadence, and caps live in rules.js; the tray is handed
+  // to them as an array of bead ids, never as DOM.
+  const trayIds = () => Array.from(tray.querySelectorAll('.bead')).map(b => b.dataset.color);
+
+  function pour(withSound){
+    if (!scoopFits(state, mixLeft())){
+      // Same quiet grammar as a full jar or dish — a low tone and a plain
+      // sentence, never a wiggle or an error voice.
+      tone(150, { vol:0.08, dur:0.1 });
+      announce('No room in the mix for another scoop — sort a few or tip back.');
+      return;
+    }
+    let bag = null, dealtPerfect = false;
+    if (state.cadenceSorted >= state.nextPerfectAt){
+      bag = computePerfectScoop(state.jars, trayIds());
+      dealtPerfect = !!bag;
+    }
+    if (!bag) bag = computeScoopHonest(state); // never null — the pour never refuses
+    bag = decorateBag(bag, state.owned, Math.random);
+    if (dealtPerfect) state.nextPerfectAt = rollNextPerfect(state);
+    centerStack.hidden = true;
+    clearedMsg.innerHTML = '';
+    const pts = scatterPositions(bag.length);
+    bag.forEach((id, i) => {
+      const col = COLORS.find(c => c.id === colorOf(id)) || COLORS[0];
+      makeBead(col, pts[i][0], pts[i][1], i, true, id);
+    });
+    if (withSound){ pourSound(bag.length); tapCascade(bag.length); }
+    save();
+    state.cleared = false; // a fresh tray can be cleared again
+    save();
+    announce('Poured ' + bag.length + ' beads onto the tray.');
+    updatePourUI(); // this pour may have used up the room for the next one
+  }
+
+  // Tip-back. Returns only the mix pile to the bag — pre-sort is
+  // untouched, and this never calls trayCleared or touches state.sorted,
+  // however many beads it clears (the trap design cut 1 named: a dump
+  // must not fire level-ups or pacing).
+  function dumpMix(){
+    // Reversed so the top of the pile tips off first — DOM order is
+    // bottom-to-top, and a real tray sheds its uppermost beads first.
+    const beads = Array.from(tray.querySelectorAll('.bead')).filter(b => !inPresort(b) && !b.dataset.locked).reverse();
+    if (!beads.length){
+      // Still give feedback — a silent no-op reads as broken, not empty.
+      tone(150, { vol:0.08, dur:0.1 });
+      announce('the mix is already empty');
+      return;
+    }
+    // Fly toward the tip-back button itself — the same arc-and-shrink
+    // language as a bead landing in a jar, aimed at an edge instead of a
+    // jar's mouth, and quicker (this is many beads at once, not one).
+    const tr = dumpBtn.getBoundingClientRect();
+    const targetX = tr.left + tr.width / 2, targetY = tr.top + tr.height / 2;
+    beads.forEach((b, i) => {
+      b.dataset.locked = '1';
+      setTimeout(() => {
+        if (RM){ b.remove(); return; }
+        const br = b.getBoundingClientRect();
+        const dx = targetX - (br.left + br.width / 2);
+        const dy = targetY - (br.top + br.height / 2);
+        const dist = Math.hypot(dx, dy);
+        const lift = Math.min(24, dist * 0.12);
+        const anim = b.animate(
+          [{ transform:'translate(0,0) scale(1)' },
+           { transform:'translate(' + (dx * 0.55) + 'px,' + (dy * 0.55 - lift) + 'px) scale(.6)', offset:.6 },
+           { transform:'translate(' + dx + 'px,' + dy + 'px) scale(.2)', opacity:.2 }],
+          { duration: Math.min(320, 200 + dist * 0.28), easing:'cubic-bezier(.4,0,.7,1)' });
+        anim.onfinish = () => b.remove();
+      }, RM ? 0 : i * 18);
+    });
+    pourSound(beads.length);
+    tap('LIGHT');
+    setTimeout(() => {
+      save();
+      updatePourUI();
+      announce('Tipped ' + beads.length + ' beads back into the bag.');
+    }, RM ? 50 : beads.length * 18 + 340);
+  }
+
+  /* ---------- drag & drop ---------- */
+  // One bead moves at a time. Two-finger scooping would reward speed, and
+  // plink doesn't. (isConnected check dissolves the lock if the locking
+  // bead ever leaves the DOM mid-gesture, so dragging can never brick.)
+  let dragLock = null;
+  function attachDrag(bead){
+    let pid = null, sx = 0, sy = 0, tx = 0, ty = 0, cx = 0, cy = 0;
+    let dragging = false, raf = 0;
+
+    function loop(){
+      cx += (tx - cx) * 0.42;
+      cy += (ty - cy) * 0.42;
+      bead.style.transform = 'translate(' + cx + 'px,' + cy + 'px) scale(1.12)';
+      const jar = jarUnder();
+      jarEls.forEach(j => j.classList.toggle('hover', j === jar));
+      raf = requestAnimationFrame(loop);
+    }
+    function jarUnder(){
+      const r = bead.getBoundingClientRect();
+      const px = r.left + r.width / 2, py = r.top + r.height / 2;
+      for (const j of jarEls){
+        const jr = j.getBoundingClientRect();
+        if (px > jr.left - 8 && px < jr.right + 8 && py > jr.top - 14 && py < jr.bottom + 10)
+          return j;
+      }
+      return null;
+    }
+    bead.addEventListener('pointerdown', ev => {
+      if (pid !== null || bead.dataset.locked ||
+          (dragLock && dragLock !== bead && dragLock.isConnected)) return;
+      dragLock = bead;
+      pid = ev.pointerId;
+      // A touched bead surfaces immediately and stays on top after release:
+      // stacking among beads is DOM order (equal z-index), and syncTray
+      // persists that order. Must precede setPointerCapture — reparenting
+      // a captured element can drop the capture on iOS Safari.
+      tray.appendChild(bead);
+      bead.setPointerCapture(pid);
+      sx = ev.clientX; sy = ev.clientY;
+      tx = ty = cx = cy = 0;
+      dragging = false;
+      ac(); // unlock audio on first gesture
+    });
+    bead.addEventListener('pointermove', ev => {
+      if (ev.pointerId !== pid) return;
+      const dx = ev.clientX - sx, dy = ev.clientY - sy;
+      if (!dragging && Math.hypot(dx, dy) > 6){
+        dragging = true;
+        bead.classList.add('drag');
+        if (heldBead) setHeld(null);
+        raf = requestAnimationFrame(loop);
+      }
+      tx = dx; ty = dy;
+    });
+    function finish(ev){
+      if (ev.pointerId !== pid) return;
+      pid = null;
+      if (dragLock === bead) dragLock = null;
+      cancelAnimationFrame(raf);
+      jarEls.forEach(j => j.classList.remove('hover'));
+      if (!dragging){
+        bead.style.transform = '';
+        setHeld(heldBead === bead ? null : bead);
+        return;
+      }
+      bead.classList.remove('drag');
+      const jar = jarUnder();
+      if (jar) attemptDrop(bead, jar, cx, cy);
+      else { settleOnTray(bead); updatePourUI(); } // a mix↔dish move can free scoop room
+      dragging = false;
+    }
+    bead.addEventListener('pointerup', finish);
+    bead.addEventListener('pointercancel', finish);
+  }
+
+  // A bead dropped anywhere on the tray stays where it lands (free
+  // pre-sorting); it only nudges back inside if dropped past the edge.
+  function settleOnTray(bead){
+    const wasPresort = inPresort(bead);
+    const tr = tray.getBoundingClientRect();
+    const br = bead.getBoundingClientRect();
+    const xPct = ((br.left + br.width / 2 - tr.left) / tr.width) * 100;
+    const yPct = ((br.top + br.height / 2 - tr.top) / tr.height) * 100;
+    const clampedX = Math.min(95, Math.max(5, xPct));
+    let clampedY = Math.min(94, Math.max(6, yPct));
+    // A bead can't balance on the wood ridge between the wells — one
+    // released over it rolls off into whichever well is nearer.
+    const dead = ((21 + 6) / tr.height) * 100; // bead radius + half the ridge, as tray %
+    if (Math.abs(clampedY - PRESORT_Y) < dead)
+      clampedY = clampedY < PRESORT_Y ? PRESORT_Y - dead : PRESORT_Y + dead;
+    // Pre-sort has a real, physical bound, so a dish that's already full
+    // bounces a new arrival back, same grammar as a full jar.
+    if (!wasPresort && clampedY < PRESORT_Y && presortCount() >= PRESORT_CAP){
+      clampedY = PRESORT_Y + Math.max(6, dead);
+      tone(150, { vol:0.1, dur:0.12 });
+      announce('the pre-sort dish is full');
+    }
+    if (presortHintEl && clampedY < PRESORT_Y){
+      presortHintEl.classList.add('gone');
+      state.presortHinted = true;
+    }
+    bead.style.left = clampedX + '%';
+    bead.style.top = clampedY + '%';
+    bead.style.transform = '';
+    save();
+    if (RM) return;
+    const ddx = ((xPct - clampedX) / 100) * tr.width;
+    const ddy = ((yPct - clampedY) / 100) * tr.height;
+    bead.animate(
+      [{ transform:'translate(' + ddx + 'px,' + ddy + 'px) scale(1.12)' },
+       { transform:'translate(0,0) scale(1)' }],
+      { duration:200, easing:'cubic-bezier(.3,1.3,.5,1)' });
+  }
+  // settleOnTray ends with the offer zone re-checked from finish(), not
+  // here: RM returns early above, and the nudge must run either way.
+
+  function returnBead(bead, fromX, fromY){
+    if (RM){ bead.style.transform = ''; return; }
+    bead.dataset.locked = '1';
+    const anim = bead.animate(
+      [{ transform:'translate(' + fromX + 'px,' + fromY + 'px) scale(1.12)' },
+       { transform:'translate(0,0) scale(1)' }],
+      { duration:300, easing:'cubic-bezier(.3,1.4,.5,1)' });
+    anim.onfinish = () => { bead.style.transform = ''; delete bead.dataset.locked; };
+  }
+
+  function attemptDrop(bead, jar, fromX = 0, fromY = 0){
+    if (bead.dataset.locked) return;
+    const jarIndex = +jar.dataset.index;
+    const col = COLORS.find(c => c.id === colorOf(bead.dataset.color));
+    if (jar.dataset.busy){ // mid-celebration; hand the bead back gently
+      if (heldBead === bead) setHeld(null);
+      returnBead(bead, fromX, fromY);
+      return;
+    }
+    const pending = jarPending[jarIndex] || 0;
+    if (state.jars[jarIndex].length + pending >= CAP){ // physically full — no room
+      if (heldBead === bead) setHeld(null);
+      returnBead(bead, fromX, fromY);
+      tone(150, { vol:0.1, dur:0.12 });
+      announce('Jar ' + (jarIndex + 1) + ' is full.');
+      return;
+    }
+    if (heldBead === bead) setHeld(null);
+    bead.dataset.locked = '1';
+    const slotIndex = state.jars[jarIndex].length + pending;
+    jarPending[jarIndex] = pending + 1;
+    const fill = jar.querySelector('.fill');
+    const fr = fill.getBoundingClientRect();
+    const [sxPct, syPct] = slotPos(slotIndex);
+    const targetX = fr.left + fr.width * (sxPct / 100) + 6;
+    const targetY = fr.bottom - fr.height * (syPct / 100) - 6;
+    const br = bead.getBoundingClientRect();
+    const dx = targetX - (br.left + br.width / 2);
+    const dy = targetY - (br.top + br.height / 2);
+
+    tone(NOTES[jarIndex]);
+    tap('LIGHT');
+    logoDot.style.background =
+      'radial-gradient(circle at 32% 30%, ' + col.hi + ', ' + col.c + ' 55%, ' + col.lo + ')';
+
+    const settle = () => {
+      jarPending[jarIndex]--;
+      const beadId = bead.dataset.color; // keep the shape, not just the paint
+      bead.remove();
+      addMini(jarIndex, col, slotIndex, true, shapeOf(beadId));
+      state.jars[jarIndex].push(beadId);
+      state.sorted++;
+      state.cadenceSorted++;
+      if (!state.hinted){
+        state.hinted = true;
+        hintEl.classList.add('gone');
+        if (!state.hinted2) setTimeout(() => {
+          hintEl.textContent = TAKEBACK_HINT;
+          hintEl.classList.remove('gone');
+        }, 900);
+      }
+      jar.setAttribute('aria-label', jarLabel(jarIndex));
+      announce(col.name + ' bead in jar ' + (jarIndex + 1) + ': ' + state.jars[jarIndex].length + ' of ' + CAP);
+      renderStats();
+      save();
+      const contents = state.jars[jarIndex];
+      if (contents.length >= CAP){
+        if (contents.every(id => colorOf(id) === colorOf(contents[0]))) capJar(jarIndex);
+        else jarFullHint(jarIndex);
+      }
+      if (mixLeft() === 0 && !state.cleared) trayCleared();
+      else updatePourUI();
+    };
+    if (RM){ settle(); return; }
+    bead.style.zIndex = 200;
+    // Ease into the jar along a gentle, distance-scaled curve. (The old
+    // path aimed 60px above the jar at midflight regardless of distance,
+    // so beads released at the mouth hopped upward before dropping in.)
+    const dist = Math.hypot(dx, dy);
+    const lift = Math.min(36, dist * 0.22);
+    const anim = bead.animate(
+      [{ transform:'translate(' + fromX + 'px,' + fromY + 'px) scale(1.12)' },
+       { transform:'translate(' + (fromX + dx * 0.5) + 'px,' + (fromY + dy * 0.5 - lift) + 'px) scale(.85)', offset:.55 },
+       { transform:'translate(' + (fromX + dx) + 'px,' + (fromY + dy) + 'px) scale(.38)', opacity:.9 }],
+      { duration: Math.min(430, 240 + dist * 0.45), easing:'cubic-bezier(.35,.6,.4,1)' });
+    anim.onfinish = settle;
+  }
+
+  function capJar(jarIndex){
+    const jar = jarEls[jarIndex];
+    const bonus = matchBonus(state.jars[jarIndex]);
+    jar.dataset.busy = '1';
+    jar.classList.add('capped', 'pop');
+    sparkle(jar, bonus ? 14 : 6); // a matched jar celebrates harder, wordlessly
+    arpeggio(NOTES[jarIndex]);
+    tapShelve();
+    announce('Jar ' + (jarIndex + 1) + ' is full! Shelved.');
+    setTimeout(() => {
+      // jars cap color-uniform; the shelf entry's c keeps the full
+      // composite id only when all twelve beads share the shape (a
+      // matched jar is worth showing off), while b records the exact
+      // per-bead contents — history can never be reconstructed later,
+      // and a future jar-detail view will want the true mix
+      const jarBeads = state.jars[jarIndex];
+      const matched = jarBeads.every(id => id === jarBeads[0]);
+      state.shelf.push({
+        c: matched ? jarBeads[0] : colorOf(jarBeads[0]),
+        t: localDate(),
+        b: jarBeads.slice(),
+      });
+      state.jars[jarIndex] = [];
+      state.shelved++;
+      state.buttons += BUTTONS_PER_JAR + bonus;
+      flyButtons(BUTTONS_PER_JAR + bonus, jar); // earned buttons visibly land in the tin
+      jar.querySelector('.fill').innerHTML = '';
+      jar.classList.remove('capped', 'pop');
+      delete jar.dataset.busy;
+      jar.setAttribute('aria-label', jarLabel(jarIndex));
+      renderStats();
+      save();
+      const mixCleared = mixLeft() === 0;
+      if (state.jars.every(j => j.length === 0) && mixCleared) celebrateSlate();
+      else if (mixCleared && centerStack.hidden) showPourUI('tray sorted ✦');
+      else updatePourUI(); // a freed jar may change the offer
+    }, RM ? 200 : 1100);
+  }
+
+  function reflowMinis(fill){
+    Array.from(fill.querySelectorAll('.mini')).forEach((m, j) => {
+      const [x, y] = slotPos(j);
+      m.style.left = x + '%';
+      m.style.bottom = y + '%';
+    });
+  }
+
+  function pourBack(jarIndex, count){
+    const jar = jarEls[jarIndex];
+    if (jar.dataset.busy) return;
+    const contents = state.jars[jarIndex];
+    const n = Math.min(count, contents.length);
+    // tip even when empty — the motion says "nothing in here"
+    jar.classList.add(n > 1 ? 'tip' : 'tip-sm');
+    setTimeout(() => jar.classList.remove('tip', 'tip-sm'),
+      n > 1 ? 160 + n * 70 + 240 : 220);
+    if (n === 0) return;
+    jar.dataset.busy = '1';
+    const fill = jar.querySelector('.fill');
+    const minis = Array.from(fill.querySelectorAll('.mini'));
+    const evicted = [];
+    for (let k = 0; k < n; k++){
+      const idx = evictIndex(contents);
+      evicted.push({ id: contents[idx], el: minis[idx] });
+      contents.splice(idx, 1);
+      minis.splice(idx, 1);
+    }
+    const pts = scatterPositions(n);
+    if (n > 1) pourSound(n);
+    evicted.forEach((ev, k) => {
+      const col = COLORS.find(c => c.id === colorOf(ev.id)) || COLORS[0];
+      setTimeout(() => {
+        if (ev.el) ev.el.remove();
+        reflowMinis(fill);
+        spawnFromJar(col, pts[k][0], pts[k][1], jar, ev.id);
+        // single take-back keeps its low echo; a multi-bead pour lets the
+        // felt patter speak alone (two voices at once sounded like a bug)
+        if (n === 1) tone(NOTES[jarIndex] / 2, { vol: 0.14, dur: 0.24 });
+        else tap('LIGHT'); // pour-back is a gentler spill; feel follows
+      }, RM ? 0 : 120 + k * 70);
+    });
+    state.sorted = Math.max(0, state.sorted - n);
+    state.cadenceSorted = Math.max(0, state.cadenceSorted - n); // cadence can't be pumped by re-sorting
+    if (!state.hinted2){ state.hinted2 = true; hintEl.classList.add('gone'); }
+    centerStack.hidden = true;
+    clearedMsg.textContent = '';
+    jar.setAttribute('aria-label', jarLabel(jarIndex));
+    announce(n === 1
+      ? 'Took a ' + colorOf(evicted[0].id) + ' bead back from jar ' + (jarIndex + 1) + '.'
+      : 'Poured ' + n + ' beads from jar ' + (jarIndex + 1) + ' back onto the tray.');
+    renderStats();
+    save();
+    setTimeout(() => {
+      delete jar.dataset.busy;
+      save(); // beads have all landed on the tray by now
+      updatePourUI();
+    }, RM ? 50 : 160 + n * 70 + 460);
+  }
+
+  function spawnFromJar(col, xPct, yPct, jar, id = col.id){
+    const b = makeBead(col, xPct, yPct, 0, false, id);
+    if (RM) return;
+    const br = b.getBoundingClientRect();
+    const gr = jar.querySelector('.glass').getBoundingClientRect();
+    const fx = gr.left + gr.width / 2 - (br.left + br.width / 2);
+    const fy = gr.top + gr.height / 2 - (br.top + br.height / 2);
+    b.dataset.locked = '1';
+    const anim = b.animate(
+      [{ transform:'translate(' + fx + 'px,' + fy + 'px) scale(.38)', opacity:.9 },
+       { transform:'translate(' + (fx * 0.5) + 'px,' + (fy - 55) + 'px) scale(.95)', offset:.5 },
+       { transform:'translate(0,0) scale(1)' }],
+      { duration:430, easing:'cubic-bezier(.35,.6,.4,1)' });
+    anim.onfinish = () => { b.style.transform = ''; delete b.dataset.locked; };
+  }
+
+  function jarFullHint(jarIndex){
+    announce('Jar ' + (jarIndex + 1) + ' is full, but mixed. Jars shelve when all twelve beads match.');
+    if (state.hinted3) return;
+    state.hinted3 = true;
+    save();
+    hintEl.textContent = 'a jar shelves when all twelve beads match';
+    hintEl.classList.remove('gone');
+    setTimeout(() => hintEl.classList.add('gone'), 4500);
+  }
+
+  // Center-of-felt text only: celebrations. The pour button itself lives
+  // outside the tray. (The honest composer never refuses — tip-back is
+  // the escape valve — so there is no wall message to show.)
+  function showPourUI(message){
+    clearedMsg.innerHTML = message || '';
+    centerStack.hidden = !clearedMsg.innerHTML;
+  }
+
+  // The pour button sits outside the tray and is never withheld: the bag
+  // on a real craft table is always in reach, and that standing freedom
+  // is what lets a player hoard a color instead of being made to spend
+  // it (plink-igv). It lives off the felt so it can't cover a bead and
+  // never tempts from the middle of a finishing pass.
+  function updatePourUI(){
+    // The pill dims while a scoop wouldn't fit; it stays tappable so the
+    // refusal can speak (a silent no-op reads as broken, not full).
+    const fits = scoopFits(state, mixLeft());
+    pourBtn.classList.toggle('noroom', !fits);
+    pourBtn.setAttribute('aria-disabled', String(!fits));
+    if (mixLeft() === 0) return; // trayCleared owns the full celebration
+    // a capping jar is mid-celebration and re-runs this when it lands —
+    // don't blank its center text early
+    if (jarEls.some(j => j.classList.contains('capped'))) return;
+    centerStack.hidden = true;
+  }
+
+  function trayCleared(){
+    state.cleared = true; // one celebration per tray — re-jarring an evicted bead earns nothing
+    save();
+    clearChime();
+    const before = activeColorCount(state.level);
+    state.level++;
+    const after = activeColorCount(state.level);
+    if (after > before) state.pendingGift = COLORS[after - 1].id;
+    let extra = '';
+    let said = 'Tray sorted. Pour another scoop when ready.';
+    if (after > before){
+      const col = COLORS[after - 1];
+      extra = 'a new color joins: <span class="dotc" style="--c:' + col.c +
+        ';--hi:' + col.hi + ';--lo:' + col.lo + '"></span> ' + col.name;
+      said = 'Tray sorted. A new color joins the next scoop: ' + col.name + '.';
+    }
+    save();
+    // If every jar is empty or mid-cap, a clean slate is about to land —
+    // hold the toast and let the milestone take over when the caps finish.
+    const slateIncoming = jarEls.some(j => j.dataset.busy) &&
+      state.jars.every((jar, i) => jar.length === 0 || jarEls[i].dataset.busy);
+    if (slateIncoming){ pendingSlateExtra = extra; return; }
+    showPourUI('tray sorted ✦' + (extra ? '<br>' + extra : ''));
+    announce(said);
+  }
+
+  function celebrateSlate(){
+    state.slates++;
+    state.buttons += BUTTONS_PER_SLATE;
+    flyButtons(BUTTONS_PER_SLATE, tray); // ten buttons parade from the cleared table
+    const extra = pendingSlateExtra || '';
+    pendingSlateExtra = null;
+    renderStats();
+    save();
+    slateFanfare();
+    tapSuccess();
+    if (!RM) jarEls.forEach((jar, i) => setTimeout(() => {
+      jar.classList.remove('pop'); void jar.offsetWidth;
+      jar.classList.add('pop');
+      sparkle(jar);
+      setTimeout(() => jar.classList.remove('pop'), 600);
+    }, i * 110));
+    showPourUI('✦ clean slate ✦' + (extra ? '<br>' + extra : ''));
+    announce('Clean slate! Every jar shelved and the tray is clear.');
+  }
+
+  function slateFanfare(){
+    NOTES.forEach((f, i) => tone(f, { delay: i * 0.09, vol: 0.18, dur: 0.5 }));
+    tone(1046.5, { delay: NOTES.length * 0.09 + 0.06, vol: 0.2, dur: 0.9 });
+  }
+
+  function announce(msg){ sr.textContent = msg; }
+
+  pourBtn.addEventListener('click', () => pour(true));
+
+  soundBtn.addEventListener('click', () => {
+    state.sound = !state.sound;
+    soundBtn.setAttribute('aria-pressed', String(state.sound));
+    soundBtn.setAttribute('aria-label', state.sound ? 'Sound on' : 'Sound off');
+    soundBtn.innerHTML = '♫'; // strike-through + dimming carry the off state
+    save();
+    if (state.sound) tone(659.25, { vol:0.12, dur:0.2 });
+  });
+  soundBtn.setAttribute('aria-pressed', String(state.sound));
+  soundBtn.innerHTML = '♫'; // strike-through + dimming carry the off state
+  if (!state.sound) soundBtn.setAttribute('aria-label', 'Sound off');
+
+  // A mixed jar occasionally gives a tiny wobble — a wordless nudge that
+  // it wants consolidating (take-back makes that easy, and mixed jars
+  // block clean slates). Gentle by design: one jar, about once a minute
+  // with jitter, silent, never mid-celebration, and a fresh mix gets a
+  // full quiet period before its first wobble.
+  const JIGGLE_MS = 50000;
+  let nextJiggle = Date.now() + JIGGLE_MS + Math.random() * 40000;
+  setInterval(() => {
+    if (RM || document.hidden) return;
+    const mixed = state.jars
+      .map((jar, i) => ({ jar, i }))
+      .filter(x => x.jar.length > 1 && !x.jar.every(id => colorOf(id) === colorOf(x.jar[0])) &&
+                   !jarEls[x.i].dataset.busy);
+    if (!mixed.length){ nextJiggle = Date.now() + JIGGLE_MS; return; }
+    if (Date.now() < nextJiggle) return;
+    const jar = jarEls[mixed[Math.floor(Math.random() * mixed.length)].i];
+    jar.classList.remove('jiggle'); void jar.offsetWidth;
+    jar.classList.add('jiggle');
+    setTimeout(() => jar.classList.remove('jiggle'), 1000);
+    nextJiggle = Date.now() + JIGGLE_MS + Math.random() * 40000;
+  }, 5000);
+
+  /* ---------- installable app & save backup ---------- */
+  // Offline cache; an installed app is also exempt from Safari's 7-day
+  // storage eviction, which is the whole point — real players live here.
+  // Skipped inside the Capacitor shell: assets are local there and
+  // service workers are flaky in native webviews.
+  if ('serviceWorker' in navigator && !window.Capacitor)
+    navigator.serviceWorker.register('sw.js').catch(() => {});
+  if (navigator.storage && navigator.storage.persist)
+    navigator.storage.persist().catch(() => {});
+
+  /* ---------- the shelf: every jar ever filled ---------- */
+  // The stats line is the door: the number you admire opens the thing it
+  // counts. Jars render in finished order, oldest first, grouped by
+  // month; jars shelved before records exist sit in their own dusty
+  // group up front. Backup utilities live here too — admiration and
+  // housekeeping both belong off the fidget.
+  const shelfView = document.getElementById('shelfView');
+  const shelfScroll = document.getElementById('shelfScroll');
+  const backupNote = document.getElementById('backupNote');
+  const NOTE_DEFAULT = backupNote.textContent;
+  const MONTHS = ['january','february','march','april','may','june',
+    'july','august','september','october','november','december'];
+  function shelfGroupKey(e){
+    if (e.s || !e.t) return 'before we kept records';
+    const [y, m] = e.t.split('-');
+    return MONTHS[+m - 1] + ' ' + y;
+  }
+  function renderShelf(){
+    shelfScroll.innerHTML = '';
+    if (!state.shelf || !state.shelf.length){
+      const p = document.createElement('p');
+      p.className = 'shelf-empty';
+      p.textContent = 'nothing up here yet · gather twelve of one color and the jar joins the shelf';
+      shelfScroll.appendChild(p);
+      return;
+    }
+    const cols = Math.max(4, Math.floor(shelfScroll.clientWidth / 54));
+    const groups = [];
+    state.shelf.forEach(e => {
+      const key = shelfGroupKey(e);
+      if (!groups.length || groups[groups.length - 1].key !== key)
+        groups.push({ key, entries: [] });
+      groups[groups.length - 1].entries.push(e);
+    });
+    groups.forEach(g => {
+      const label = document.createElement('p');
+      label.className = 'shelf-group-label';
+      label.textContent = g.key;
+      shelfScroll.appendChild(label);
+      for (let i = 0; i < g.entries.length; i += cols){
+        const row = document.createElement('div');
+        row.className = 'shelf-row';
+        row.style.setProperty('--cols', cols);
+        g.entries.slice(i, i + cols).forEach((e, j) => {
+          const col = COLORS.find(c => c.id === colorOf(e.c)) || COLORS[0];
+          const shape = shapeOf(e.c); // composite only when all 12 matched
+          const kind = col.name + (shape !== 'round' ? ' ' + shape + 's' : '');
+          const jar = document.createElement('div');
+          jar.className = 'sjar' + (e.s ? ' dusty' : '');
+          jar.setAttribute('role', 'img');
+          jar.setAttribute('aria-label', kind + (e.t ? ', ' + e.t : ', before records'));
+          jar.title = kind + (e.t ? ' · ' + e.t : '');
+          // the game's slot grid with deterministic per-jar jitter, so
+          // every jar's beads sit a little differently but never reshuffle
+          const idx = i + j;
+          let beads = '';
+          for (let k = 0; k < CAP; k++){
+            const x = 12 + (k % 3) * 31 + (((idx * 31 + k * 17) % 7) - 3);
+            const y = 3 + Math.floor(k / 3) * 21 + (((idx * 13 + k * 29) % 5) - 2);
+            beads += '<span class="sbead" style="left:' + x + '%;bottom:' + y + '%">' +
+              shapeFace(shape, col) + '</span>';
+          }
+          jar.innerHTML = '<span class="sglass" style="--c:' + col.c + ';--hi:' + col.hi +
+            ';--lo:' + col.lo + '"><span class="sfill">' + beads +
+            '</span><span class="slid"></span></span>';
+          row.appendChild(jar);
+        });
+        shelfScroll.appendChild(row);
+      }
+    });
+  }
+  addEventListener('resize', () => { if (!shelfScroll.hidden && !shelfView.hidden) renderShelf(); });
+
+  /* ---------- the catalog: buttons buy silhouettes ---------- */
+  // The only place the balance ever appears — a watched number becomes a
+  // score, so the tin lives here and nowhere else. Purchases are final
+  // and regret-free; not affording something is a soft physical refusal
+  // (a jiggle, like a full jar), never a lecture.
+  const shelfUtil = document.getElementById('shelfUtil');
+  const tinLine = document.getElementById('tinLine');
+  const catItems = document.getElementById('catItems');
+  const CATALOG = [
+    { shape: 'cube', name: 'cubes', c: 'jade' },
+    { shape: 'heart', name: 'hearts', c: 'cherry' },
+    { shape: 'star', name: 'stars', c: 'honey' },
+  ];
+  // The currency icon: a red sewing button — a crafter's coin. Distinct
+  // from beads at a glance (four thread holes, not one center bore).
+  // Colors are cherry's own palette, so it sits inside the bead family.
+  function buttonIcon(size){
+    return '<svg class="btn-icon" viewBox="0 0 24 24" aria-hidden="true"' +
+      ' style="width:' + size + 'px;height:' + size + 'px">' +
+      '<circle cx="12" cy="12" r="10" fill="#e0475c"/>' +
+      '<circle cx="9.4" cy="8.6" r="5.4" fill="#ee9aa5" opacity=".4"/>' +
+      '<circle cx="12" cy="12" r="10" fill="none" stroke="#822935" stroke-width="1.3"/>' +
+      '<circle cx="12" cy="12" r="7" fill="none" stroke="#822935" stroke-width="1.4" opacity=".35"/>' +
+      '<circle cx="9.5" cy="9.5" r="1.5" fill="rgba(40,8,12,.85)"/>' +
+      '<circle cx="14.5" cy="9.5" r="1.5" fill="rgba(40,8,12,.85)"/>' +
+      '<circle cx="9.5" cy="14.5" r="1.5" fill="rgba(40,8,12,.85)"/>' +
+      '<circle cx="14.5" cy="14.5" r="1.5" fill="rgba(40,8,12,.85)"/>' +
+      '</svg>';
+  }
+  // Owned marker: a check stitched in cream thread — a sample you own,
+  // not a menu item that's gone grey.
+  function stitchCheck(size){
+    return '<svg aria-hidden="true" viewBox="0 0 24 24"' +
+      ' style="width:' + size + 'px;height:' + size + 'px">' +
+      '<path d="M4.5,13L10,18.5L19.5,6.5" fill="none" stroke="rgba(0,0,0,.4)"' +
+      ' stroke-width="3.4" stroke-linecap="round" stroke-linejoin="round"' +
+      ' stroke-dasharray="3.4 2.2" transform="translate(0,0.8)"/>' +
+      '<path d="M4.5,13L10,18.5L19.5,6.5" fill="none" stroke="#f3e7d3"' +
+      ' stroke-width="3" stroke-linecap="round" stroke-linejoin="round"' +
+      ' stroke-dasharray="3.4 2.2"/>' +
+      '</svg>';
+  }
+  let confirming = null, confirmTimer = 0;
+  function renderCatalog(){
+    tinLine.innerHTML = '<span>' + state.buttons + '</span>' + buttonIcon(27);
+    tinLine.setAttribute('aria-label', state.buttons + ' buttons in the tin');
+    catItems.innerHTML = '';
+    CATALOG.forEach(item => {
+      const col = COLORS.find(c => c.id === item.c) || COLORS[0];
+      const owned = state.owned.includes(item.shape);
+      const b = document.createElement('button');
+      b.className = 'cat-item' + (owned ? ' owned' : '') +
+        (confirming === item.shape ? ' confirm' : '');
+      b.innerHTML = '<span class="prev">' + shapeFace(item.shape, col) + '</span>' +
+        '<span class="cat-price">' + (owned ? stitchCheck(21)
+          : confirming === item.shape ? 'sure?'
+          : '<span>' + SHAPE_PRICE + '</span>' + buttonIcon(13)) + '</span>';
+      b.setAttribute('aria-label', item.name + (owned ? ', owned' :
+        ', ' + SHAPE_PRICE + ' buttons' +
+        (confirming === item.shape ? '. Press again to buy.' : '')));
+      b.addEventListener('click', () => catalogTap(item, b));
+      catItems.appendChild(b);
+    });
+  }
+  function catalogTap(item, el){
+    if (state.owned.includes(item.shape)) return;
+    if (state.buttons < SHAPE_PRICE){ // can't hand over buttons you don't have
+      if (!RM){ el.classList.remove('no'); void el.offsetWidth; el.classList.add('no'); }
+      announce('Not enough buttons yet.');
+      return;
+    }
+    if (confirming !== item.shape){
+      confirming = item.shape;
+      clearTimeout(confirmTimer);
+      confirmTimer = setTimeout(() => { confirming = null; renderCatalog(); }, 4000);
+      renderCatalog();
+      return;
+    }
+    clearTimeout(confirmTimer);
+    confirming = null;
+    state.buttons -= SHAPE_PRICE;
+    state.owned.push(item.shape);
+    save();
+    clearChime();
+    announce('Bought ' + item.name + '. New beads will arrive in future scoops.');
+    renderCatalog();
+    renderTin();
+  }
+
+  /* ---------- the button tin: balance in the scene, door to the catalog ---------- */
+  const tinBtn = document.getElementById('tinBtn');
+  const catalogSheet = document.getElementById('catalogSheet');
+  const sheetScrim = document.getElementById('sheetScrim');
+  function renderTin(){
+    tinBtn.innerHTML = '<span>' + state.buttons + '</span>' + buttonIcon(27);
+    tinBtn.setAttribute('aria-label',
+      state.buttons + ' buttons in the tin. Open the catalog.');
+  }
+  // Earned buttons fly from the jar that earned them into the tin — the
+  // movement is the celebration; the count only changes when they land.
+  function flyButtons(n, fromEl){
+    if (RM || !fromEl || !fromEl.isConnected){ renderTin(); return; }
+    const from = fromEl.getBoundingClientRect();
+    const to = tinBtn.getBoundingClientRect();
+    const count = Math.min(n, 12);
+    for (let i = 0; i < count; i++){
+      const fly = document.createElement('span');
+      fly.className = 'btn-fly';
+      fly.innerHTML = buttonIcon(15);
+      const sx = from.left + from.width / 2 + (Math.random() * 22 - 11);
+      const sy = from.top + from.height / 2;
+      fly.style.left = sx + 'px';
+      fly.style.top = sy + 'px';
+      document.body.appendChild(fly);
+      const dx = to.left + to.width / 2 - sx;
+      const dy = to.top + to.height / 2 - sy;
+      const lift = Math.min(44, Math.hypot(dx, dy) * 0.18);
+      const anim = fly.animate(
+        [{ transform:'translate(-50%,-50%)', opacity:1 },
+         { transform:'translate(calc(-50% + ' + (dx * 0.55) + 'px), calc(-50% + ' + (dy * 0.55 - lift) + 'px)) scale(.9)', offset:.6 },
+         { transform:'translate(calc(-50% + ' + dx + 'px), calc(-50% + ' + dy + 'px)) scale(.4)', opacity:.9 }],
+        { duration: 520, delay: i * 70, easing:'cubic-bezier(.35,0,.6,1)', fill:'backwards' });
+      anim.onfinish = () => {
+        fly.remove();
+        if (i === 0) renderTin(); // first landing carries the news
+        tinBtn.animate(
+          [{ transform:'scale(1)' }, { transform:'scale(1.05)' }, { transform:'scale(1)' }],
+          { duration: 140 });
+      };
+    }
+  }
+  let sheetReturnFocus = null;
+  function openCatalog(fromEl){
+    sheetReturnFocus = fromEl || null;
+    renderCatalog();
+    sheetScrim.hidden = false;
+    catalogSheet.hidden = false;
+    void catalogSheet.offsetHeight; // commit the closed position, then slide
+    sheetScrim.classList.add('open');
+    catalogSheet.classList.add('open');
+    catalogSheet.focus();
+  }
+  function closeCatalog(){
+    confirming = null;
+    sheetScrim.classList.remove('open');
+    catalogSheet.classList.remove('open');
+    const done = () => { sheetScrim.hidden = true; catalogSheet.hidden = true; };
+    if (RM) done(); else setTimeout(done, 300);
+    if (sheetReturnFocus) sheetReturnFocus.focus();
+    sheetReturnFocus = null;
+  }
+  tinBtn.addEventListener('click', () => openCatalog(tinBtn));
+  sheetScrim.addEventListener('click', closeCatalog);
+  document.getElementById('sheetGrip').addEventListener('click', closeCatalog);
+  renderTin();
+  /* ---------- places: the table, and the shelf above it ---------- */
+  // One control, one location: the shelf pill toggles the place. The
+  // header stays above the shelf view, so leaving happens exactly where
+  // entering did. The covered table goes inert (it is a place-change,
+  // not a dialog — the persistent header must stay reachable).
+  const shelfBtn = document.getElementById('shelfBtn');
+  const tableParts = [document.getElementById('jars'),
+    document.querySelector('.tray-wrap'), document.querySelector('.pour-bar')];
+  // hidden, not just inert: the shelf view is transparent so the body's
+  // wood stays one continuous wall — the table must actually vanish
+  function showPage(page){ // 'tray' | 'shelf' — the catalog is a sheet, not a place
+    confirming = null;
+    const up = page === 'shelf';
+    shelfBtn.setAttribute('aria-pressed', up);
+    tableParts.forEach(el => {
+      if (up) el.setAttribute('inert', ''); else el.removeAttribute('inert');
+      el.style.visibility = up ? 'hidden' : '';
+    });
+    if (!up){
+      shelfView.hidden = true;
+      shelfBtn.focus();
+      return;
+    }
+    // clear the floating header, whatever height it wrapped to
+    shelfView.style.paddingTop =
+      (document.querySelector('.top').getBoundingClientRect().bottom + 6) + 'px';
+    shelfView.hidden = false; // visible first: renderShelf measures width
+    renderShelf();
+    backupNote.textContent = NOTE_DEFAULT;
+    document.getElementById('buildNote').textContent =
+      'this copy deployed ' + document.lastModified;
+    shelfScroll.scrollTop = shelfScroll.scrollHeight; // newest jars greet you
+    shelfView.focus();
+  }
+  shelfBtn.addEventListener('click', () => showPage(shelfView.hidden ? 'shelf' : 'tray'));
+  document.addEventListener('keydown', ev => {
+    if (ev.key !== 'Escape') return;
+    if (!catalogSheet.hidden) closeCatalog();
+    else if (!shelfView.hidden) showPage('tray');
+  });
+  document.getElementById('copySaveBtn').addEventListener('click', async () => {
+    save();
+    try {
+      await navigator.clipboard.writeText(JSON.stringify(state));
+      backupNote.textContent = 'backup copied ✓ paste it somewhere safe';
+    } catch (e) {
+      backupNote.textContent = 'couldn’t reach the clipboard — try again after tapping the page';
+    }
+    announce(backupNote.textContent);
+  });
+  document.getElementById('restoreSaveBtn').addEventListener('click', async () => {
+    try {
+      const text = await navigator.clipboard.readText();
+      const data = JSON.parse(text);
+      if (!data || typeof data.sorted !== 'number' || !Array.isArray(data.jars))
+        throw new Error('not a plink backup');
+      if (!confirm('Replace the beads on this device with the backup in your clipboard?')) return;
+      localStorage.setItem(KEY, JSON.stringify(data));
+      location.reload();
+    } catch (e) {
+      backupNote.textContent = 'that doesn’t look like a plink backup — copy one first, then restore';
+      announce(backupNote.textContent);
+    }
+  });
+
+  // Review aids: shapes exist in the engine before the catalog can sell
+  // them, so reviews need a way to deal some. Reachable on localhost or
+  // with ?preview on the URL — normal play never deals a shape.
+  // (PREVIEW itself is declared up top.)
+  if (PREVIEW){
+    window.plinkDealShapes = (shape = 'star') => {
+      const pts = scatterPositions(12);
+      for (let i = 0; i < 12; i++){
+        const col = COLORS[i % activeColorCount(state.level)];
+        makeBead(col, pts[i][0], pts[i][1], i, true, col.id + '~' + shape);
+      }
+      save();
+    };
+    window.plinkShelfShapes = () => {
+      const real = state.shelf;
+      state.shelf = real.concat(
+        { c: 'cherry~star', t: localDate() },
+        { c: 'jade~heart', t: localDate() },
+        { c: 'cornflower~cube', t: localDate() });
+      showPage('shelf');
+      state.shelf = real; // rendered, never saved
+    };
+    window.plinkButtons = (n = 100) => {
+      state.buttons += n;
+      save();
+      renderTin();
+      if (!catalogSheet.hidden) renderCatalog();
+    };
+  }
+
+  // The wells and the tip-back verb, built at boot. No new scene art (the
+  // hoard-bag revert's lesson): the tip-back button reuses .verb-pill.
+  {
+    // Two felt wells; the 10px between them is the tray's own wood — the
+    // divider — continuous with the rim (see the .well CSS note).
+    const zone = document.createElement('div');
+    zone.className = 'well presort-zone';
+    zone.style.height = 'calc(' + PRESORT_Y + '% - 5px)';
+    // The whisper appears until pre-sort has held a bead, then never
+    // again (persisted, like the tray hint). A restored save with beads
+    // already up here means she already knows.
+    if (Array.isArray(state.tray) && state.tray.some(t => t.y < PRESORT_Y))
+      state.presortHinted = true;
+    if (!state.presortHinted){
+      presortHintEl = document.createElement('span');
+      presortHintEl.className = 'presort-hint';
+      presortHintEl.textContent = 'set beads aside here';
+      zone.appendChild(presortHintEl);
+    }
+    const mixWell = document.createElement('div');
+    mixWell.className = 'well mix-zone';
+    mixWell.style.top = 'calc(' + PRESORT_Y + '% + 5px)';
+    tray.insertBefore(mixWell, tray.firstChild); // both wells behind the hint text and beads alike
+    tray.insertBefore(zone, mixWell);
+
+    // Tap, not hold (the hoard-bag precedent already learned that lesson —
+    // hold only works on jars because jars ALSO have a useful tap; a
+    // standing button with nothing useful on tap just reads as broken).
+    // But dumping the whole mix pile is a bigger, harder-to-love-back
+    // action than a single bead, so it gets the catalog's tap-twice
+    // "sure?" confirm rather than firing on the first tap.
+    dumpBtn = document.createElement('button');
+    dumpBtn.className = 'verb-pill';
+    document.querySelector('.pour-bar').appendChild(dumpBtn);
+    let dumpConfirming = false, dumpConfirmTimer = 0;
+    function renderDumpBtn(){
+      dumpBtn.textContent = dumpConfirming ? 'sure?' : 'tip back';
+      dumpBtn.classList.toggle('confirm', dumpConfirming);
+      dumpBtn.setAttribute('aria-label', dumpConfirming
+        ? 'Press again to tip the mix pile back into the bag.'
+        : 'Tip the mix pile back into the bag; pre-sort stays put.');
+    }
+    dumpBtn.addEventListener('click', () => {
+      if (!dumpConfirming){
+        dumpConfirming = true;
+        clearTimeout(dumpConfirmTimer);
+        dumpConfirmTimer = setTimeout(() => { dumpConfirming = false; renderDumpBtn(); }, 4000);
+        renderDumpBtn();
+        return;
+      }
+      clearTimeout(dumpConfirmTimer);
+      dumpConfirming = false;
+      renderDumpBtn();
+      dumpMix();
+    });
+    renderDumpBtn();
+    // 'sure?' is narrower than 'tip back' — pin the pill so arming
+    // doesn't make it flinch
+    dumpBtn.style.minWidth = dumpBtn.offsetWidth + 'px';
+  }
+
+  // Restore leftover tray beads from the last visit, or pour a fresh scoop.
+  if (Array.isArray(state.tray) && state.tray.length){
+    state.tray.forEach((t, i) => {
+      const col = COLORS.find(c => c.id === colorOf(t.id)) || COLORS[0];
+      // Graduation shim: one-well-era saves scattered from y=14, so a
+      // restored bead can straddle the new ridge — roll it off to the
+      // nearer well once; settleOnTray keeps it honest from then on.
+      let y = t.y;
+      if (Math.abs(y - PRESORT_Y) < 5) y = y < PRESORT_Y ? PRESORT_Y - 5 : PRESORT_Y + 5;
+      makeBead(col, t.x, y, i, true, t.id);
+    });
+    updatePourUI();
+  } else {
+    // A save captured mid-celebration can hold a full uniform jar whose
+    // cap never landed; finish those before offering the next scoop.
+    let owedCaps = 0;
+    state.jars.forEach((jar, i) => {
+      if (jar.length >= CAP && jar.every(id => colorOf(id) === colorOf(jar[0]))){
+        owedCaps++;
+        setTimeout(() => capJar(i), 600);
+      }
+    });
+    if (!owedCaps) pour(false); // first scoop is already waiting
+  }
+
+  // ?preview on a phone has no console: auto-deal the review scoop once —
+  // every shape in four colors, plus a matched dozen of star cherries so
+  // a matched cap (bigger sparkle, bonus, shelf silhouette) can be tested
+  // end to end. Skipped while shaped beads are already on the tray.
+  if (PREVIEW && location.search.includes('preview') && state.buttons < 200){
+    state.buttons = 200; // a full tin for review shopping (no console on a phone)
+    save();
+  }
+  if (PREVIEW && location.search.includes('preview') &&
+      !Array.from(tray.querySelectorAll('.bead')).some(b => shapeOf(b.dataset.color) !== 'round')){
+    const deal = [];
+    COLORS.slice(0, 4).forEach(c => deal.push(c.id + '~star', c.id + '~heart', c.id + '~cube'));
+    for (let k = 0; k < CAP; k++) deal.push(COLORS[0].id + '~star');
+    const pts = scatterPositions(deal.length);
+    deal.forEach((id, i) => {
+      const col = COLORS.find(c => c.id === colorOf(id)) || COLORS[0];
+      makeBead(col, pts[i][0], pts[i][1], i, true, id);
+    });
+    save();
+  }
+})();

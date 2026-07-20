@@ -1,0 +1,551 @@
+  :root{
+    --wood-1:#6d4a30;
+    --wood-2:#5c3d26;
+    --wood-3:#4a2f1c;
+    --felt:#2f4a41;
+    --felt-deep:#253b34;
+    --cream:#f3e7d3;
+    --cream-dim:rgba(243,231,211,.55);
+    --tape:#f0e9d8;     /* lit cream: always and only means "active" */
+    --tape-ink:#6b5335;
+    --round:ui-rounded,"SF Pro Rounded","Hiragino Maru Gothic ProN","Arial Rounded MT Bold","Segoe UI",system-ui,sans-serif;
+    --marker:"Marker Felt","Segoe Print","Comic Sans MS",cursive;
+  }
+  *{box-sizing:border-box;}
+  html,body{height:100%;}
+  body{
+    margin:0;
+    background:
+      radial-gradient(120% 90% at 50% 0%, rgba(255,220,170,.10), transparent 60%),
+      radial-gradient(140% 120% at 50% 110%, rgba(0,0,0,.38), transparent 55%),
+      repeating-linear-gradient(90deg,
+        var(--wood-1) 0px, var(--wood-2) 46px, var(--wood-1) 47px,
+        var(--wood-2) 90px, var(--wood-3) 91px, var(--wood-1) 138px),
+      var(--wood-2);
+    color:var(--cream);
+    font-family:var(--round);
+    overscroll-behavior:none;
+    -webkit-user-select:none; user-select:none;
+    -webkit-touch-callout:none;
+    -webkit-tap-highlight-color:transparent;
+    overflow:hidden;
+  }
+  #app{
+    height:100dvh;
+    max-width:520px;
+    margin:0 auto;
+    display:flex;
+    flex-direction:column;
+    padding:calc(10px + env(safe-area-inset-top)) 14px calc(8px + env(safe-area-inset-bottom));
+  }
+  button{font-family:inherit;}
+  button:focus-visible, .bead:focus-visible, .jar:focus-visible{
+    outline:2px solid var(--cream);
+    outline-offset:3px;
+    border-radius:8px;
+  }
+
+  /* ---------- header ---------- */
+  .top{
+    display:flex; align-items:flex-start; justify-content:space-between;
+    padding:2px 4px 8px;
+    /* the header is shared chrome for both places — it floats above the
+       shelf so the shelf pill can be a true same-location toggle */
+    position:relative; z-index:65;
+  }
+  .pill-btn[aria-pressed="true"]{
+    background:var(--tape); color:var(--tape-ink);
+    border-color:transparent;
+    box-shadow:0 3px 6px rgba(0,0,0,.3);
+  }
+  .logo{
+    margin:0;
+    font-size:34px; font-weight:800; letter-spacing:.02em; line-height:1;
+    color:var(--cream);
+    text-shadow:0 2px 0 rgba(0,0,0,.28);
+  }
+  .logo .li{position:relative; display:inline-block;}
+  .logo .dot{
+    position:absolute; left:50%; top:-.13em;
+    width:.2em; height:.2em; margin-left:-.1em;
+    border-radius:50%;
+    background:radial-gradient(circle at 32% 30%, #ff8ba0, #e0475c 55%, #8f1f33);
+    box-shadow:0 1px 2px rgba(0,0,0,.35);
+    transition:background .3s;
+  }
+  .tagline{
+    margin:5px 0 0; font-size:12px; font-weight:600;
+    letter-spacing:.14em; text-transform:uppercase;
+    color:var(--cream-dim);
+  }
+  .sound,.pill-btn{
+    background:rgba(0,0,0,.22);
+    border:1px solid rgba(243,231,211,.25);
+    color:var(--cream);
+    border-radius:999px;
+    min-width:44px; min-height:36px;
+    padding:6px 13px;
+    font-size:13px; font-weight:700;
+    white-space:nowrap;
+    cursor:pointer;
+    transition:opacity .2s;
+  }
+  .sound[aria-pressed="false"]{opacity:.45; text-decoration:line-through;}
+
+  /* ---------- jars ---------- */
+  .jars{
+    display:flex; justify-content:space-between; gap:6px;
+    padding:6px 2px 14px;
+    border-bottom:2px solid rgba(0,0,0,.22);
+    box-shadow:0 2px 0 rgba(255,255,255,.05);
+  }
+  .jar{
+    flex:1 1 0;
+    background:none; border:0; padding:0;
+    display:flex; flex-direction:column; align-items:center;
+    cursor:pointer;
+    touch-action:manipulation;
+    transition:transform .15s ease;
+  }
+  .jar.hover{transform:translateY(-4px) scale(1.06);}
+  .jar.pop{animation:pop .5s ease;}
+  @keyframes pop{35%{transform:translateY(-7px) scale(1.1);}}
+  .jar.tip-sm .glass{transform:rotate(-10deg);}
+  .jar.tip .glass{transform:rotate(-24deg) translateY(-3px);}
+  .jar.jiggle .glass{animation:jiggle .9s ease;}
+  @keyframes jiggle{
+    15%{transform:rotate(-2.4deg);}
+    40%{transform:rotate(1.8deg);}
+    65%{transform:rotate(-1deg);}
+    85%{transform:rotate(.5deg);}
+  }
+  .glass{
+    position:relative;
+    transition:transform .2s ease;
+    width:100%; max-width:64px; height:76px;
+    border-radius:8px 8px 14px 14px;
+    background:linear-gradient(180deg, rgba(255,255,255,.20), rgba(255,255,255,.09) 30%, rgba(255,255,255,.13));
+    border:1.5px solid rgba(255,255,255,.38);
+    box-shadow:inset 0 -8px 14px rgba(0,0,0,.16), 0 3px 5px rgba(0,0,0,.3);
+  }
+  .glass::before{ /* rim */
+    content:""; position:absolute; left:-4px; right:-4px; top:-5px; height:9px;
+    border-radius:5px;
+    background:linear-gradient(180deg, rgba(255,255,255,.42), rgba(255,255,255,.16));
+    border:1px solid rgba(255,255,255,.4);
+  }
+  .glass::after{ /* shine */
+    content:""; position:absolute; left:9%; top:12%; width:14%; height:64%;
+    border-radius:999px;
+    background:linear-gradient(180deg, rgba(255,255,255,.5), rgba(255,255,255,0));
+    pointer-events:none;
+  }
+  .fill{position:absolute; inset:6px 5px 5px;}
+  .mini{
+    position:absolute;
+    width:13px; height:13px;
+    transition:left .25s ease, bottom .25s ease;
+  }
+  /* The flight animation IS the arrival — the mini must appear exactly
+     where the bead landed, so its entrance is a scale pop with zero
+     vertical motion (a translateY here re-falls the bead: reads as a
+     glitchy double-landing). */
+  .mini.drop-in{animation:mini-in .18s ease-out;}
+  @keyframes mini-in{from{transform:scale(.55); opacity:.7;} to{transform:none; opacity:1;}}
+  .lid{
+    position:absolute; left:-5px; right:-5px; top:-9px; height:13px;
+    border-radius:6px;
+    background:linear-gradient(180deg,#8a6a4a,#5f4227);
+    border:1px solid rgba(0,0,0,.35);
+    box-shadow:0 2px 3px rgba(0,0,0,.4);
+    opacity:0; transform:translateY(-18px) rotate(-8deg);
+    transition:opacity .25s, transform .25s cubic-bezier(.3,1.6,.5,1);
+    pointer-events:none;
+  }
+  .jar.capped .lid{opacity:1; transform:none;}
+  .spark{
+    position:absolute; font-size:13px; color:#ffe9a8;
+    pointer-events:none; z-index:60;
+    animation:spark .7s ease-out forwards;
+  }
+  @keyframes spark{
+    from{opacity:1; transform:translate(0,0) scale(.6);}
+    to{opacity:0; transform:translate(var(--sx), var(--sy)) scale(1.25);}
+  }
+
+  /* ---------- tray ---------- */
+  .tray-wrap{flex:1; display:flex; padding:16px 0 10px; min-height:0;}
+  .tray{
+    position:relative;
+    flex:1;
+    border-radius:22px;
+    background:var(--wood-3); /* the molded body; the wells carry the felt */
+    border:7px solid var(--wood-3);
+    box-shadow:0 5px 10px rgba(0,0,0,.32);
+  }
+  .hint{
+    position:absolute; top:12px; left:0; right:0;
+    text-align:center;
+    font-size:13px; font-weight:600; color:rgba(243,231,211,.7);
+    pointer-events:none;
+    transition:opacity .6s;
+  }
+  .hint.gone{opacity:0;}
+
+  /* The two-compartment tray. Mike's construction (session 1101b6f5):
+     NOT a divider element laid on the felt — the tray is one molded body,
+     and each compartment is its own rounded felt well sunk into it. The
+     "divider" is the tray's own wood showing between the two wells, and
+     because each well has rounded corners, the wood fills those corner
+     gaps and runs continuously into the outer rim — one solid frame,
+     like a real double-compartment tray. */
+  .well{
+    position:absolute; left:0; right:0;
+    background:
+      radial-gradient(90% 70% at 30% 25%, rgba(255,255,255,.045), transparent 60%),
+      radial-gradient(100% 80% at 70% 80%, rgba(0,0,0,.14), transparent 55%),
+      var(--well-felt, var(--felt));
+    box-shadow:
+      inset 0 4px 14px rgba(0,0,0,.42),
+      inset 0 -2px 6px rgba(255,255,255,.05);
+    pointer-events:none;
+  }
+  .presort-zone{
+    top:0;
+    /* a deliberately different piece of felt — dusty denim at the spruce
+       felt's own saturation and depth, so it reads chosen, not tinted */
+    --well-felt:#36495e;
+    /* outer corners match the tray's inner radius (22px outer − 7px rim);
+       seam-side corners are the rounding the wood fills in around */
+    border-radius:15px 15px 12px 12px;
+    display:flex; align-items:center; justify-content:center;
+    overflow:hidden;
+  }
+  .mix-zone{
+    bottom:0;
+    border-radius:12px 12px 15px 15px;
+  }
+  /* No label — the different felt and the sunken well are the signifier
+     (jars are unlabeled for the same reason). One whisper in the tray
+     hint's own voice, gone forever the first time a bead is set here. */
+  .presort-hint{
+    font-size:13px; font-weight:600;
+    color:rgba(243,231,211,.55);
+    pointer-events:none;
+    transition:opacity .6s;
+  }
+  .presort-hint.gone{opacity:0;}
+
+  /* ---------- beads ---------- */
+  .bead{
+    position:absolute;
+    width:42px; height:42px;
+    margin:-21px 0 0 -21px;
+    padding:0; border:0;
+    border-radius:50%;
+    background:none; /* the art is the SVG face inside */
+    cursor:grab;
+    touch-action:none;
+    z-index:10;
+  }
+  .bead.drag{cursor:grabbing; z-index:100;}
+  .bead.held{
+    z-index:90;
+    box-shadow:0 6px 12px rgba(0,0,0,.45), 0 0 0 3px rgba(243,231,211,.65);
+  }
+  .bead.landing{animation:land .45s cubic-bezier(.25,1.4,.45,1) both;}
+  @keyframes land{
+    from{transform:translateY(-46vh) scale(.7); opacity:0;}
+    60%{opacity:1;}
+    to{transform:none;}
+  }
+
+  /* ---------- tape button / toast ---------- */
+  .center-stack{
+    position:absolute; left:50%; top:50%;
+    transform:translate(-50%,-50%);
+    z-index:20;
+    display:flex; flex-direction:column; align-items:center; gap:14px;
+    transition:opacity .4s;
+    pointer-events:none; /* only ever text now — never blocks a bead */
+  }
+  .center-stack[hidden]{display:none;}
+  .pour-bar{display:flex; justify-content:center; gap:14px; padding:12px 0 4px;}
+  .cleared{
+    font-size:15px; font-weight:700; letter-spacing:.06em;
+    line-height:1.6; text-align:center; max-width:78vw;
+    color:var(--cream);
+    text-shadow:0 1px 2px rgba(0,0,0,.4);
+    /* legible over a full hoard: a soft felt-toned scrim behind the text */
+    background:rgba(37,59,52,.85);
+    padding:10px 20px;
+    border-radius:16px;
+    box-shadow:0 2px 10px rgba(0,0,0,.28);
+    -webkit-backdrop-filter:blur(3px);
+    backdrop-filter:blur(3px);
+  }
+  .cleared:empty{display:none;}
+  .dotc{
+    display:inline-block; width:13px; height:13px; border-radius:50%;
+    background:radial-gradient(circle at 32% 30%, var(--hi), var(--c) 55%, var(--lo));
+    vertical-align:-1px;
+    box-shadow:0 1px 2px rgba(0,0,0,.3);
+  }
+  .verb-pill[hidden]{display:none;}
+  /* One control family, hierarchy by weight: small pills up top for
+     utility, big pills down here for the verbs — marker script keeps
+     the verbs in plink's handwriting. Lit cream means active. */
+  .verb-pill{
+    font-family:var(--marker);
+    font-size:19px;
+    color:var(--cream);
+    background:rgba(0,0,0,.22);
+    border:1px solid rgba(243,231,211,.28);
+    border-radius:999px;
+    padding:10px 26px 12px;
+    min-height:48px;
+    cursor:pointer;
+    box-shadow:0 3px 6px rgba(0,0,0,.25);
+    transition:background .15s, transform .15s;
+  }
+  .verb-pill:hover{background:rgba(0,0,0,.32);}
+  .verb-pill:active{transform:scale(.97); background:rgba(255,255,255,.10);}
+  .verb-pill.noroom{opacity:.45; cursor:default;}
+  .verb-pill.noroom:hover{background:rgba(0,0,0,.22);}
+  .verb-pill.noroom:active{transform:none; background:rgba(0,0,0,.22);}
+  .verb-pill.confirm{ /* armed: the same lit language as a pressed pill */
+    background:var(--tape); color:var(--tape-ink); border-color:transparent;
+  }
+
+  /* The button tin: a small pewter tin on the table edge. It IS the
+     catalog entry and the persistent balance — the count sits quietly
+     on the lid (no pulsing, no badges: a tin you own, not a meter that
+     owns you — plink-2q1). */
+  .top-right{display:flex; align-items:center; gap:10px;}
+  .tin-top{ /* .tin supplies the catalog's own count-with-button look */
+    background:none; border:0; padding:4px 0;
+    min-height:44px;
+    cursor:pointer;
+  }
+  .btn-fly{position:fixed; z-index:80; pointer-events:none; line-height:0;}
+
+  /* ---------- the catalog sheet ---------- */
+  .sheet-scrim{
+    position:fixed; inset:0; z-index:70;
+    background:rgba(20,12,6,.45);
+    opacity:0; transition:opacity .25s;
+  }
+  .sheet-scrim.open{opacity:1;}
+  .sheet-scrim[hidden]{display:none;}
+  .sheet{
+    position:fixed; left:0; right:0; bottom:0; z-index:71;
+    max-width:520px; margin:0 auto;
+    max-height:min(78dvh, 78vh);
+    display:flex; flex-direction:column;
+    padding:6px 14px calc(14px + env(safe-area-inset-bottom));
+    border-radius:18px 18px 0 0;
+    background:
+      radial-gradient(120% 90% at 50% 0%, rgba(255,220,170,.10), transparent 60%),
+      repeating-linear-gradient(90deg,
+        var(--wood-1) 0px, var(--wood-2) 46px, var(--wood-1) 47px,
+        var(--wood-2) 90px, var(--wood-3) 91px, var(--wood-1) 138px),
+      var(--wood-2);
+    box-shadow:0 -8px 24px rgba(0,0,0,.45);
+    transform:translateY(105%);
+    transition:transform .28s cubic-bezier(.3,0,.3,1);
+  }
+  .sheet.open{transform:none;}
+  .sheet[hidden]{display:none;}
+  .sheet:focus{outline:none;} /* the dialog takes focus for Escape; the ring belongs on its buttons */
+  .sheet-grip{
+    align-self:center;
+    width:64px; height:26px; margin:2px 0;
+    padding:0; border:0; background:none; cursor:pointer;
+  }
+  .sheet-grip::before{
+    content:''; display:block;
+    width:44px; height:5px; margin:0 auto;
+    border-radius:3px;
+    background:rgba(243,231,211,.4);
+  }
+  .sheet-head{display:flex; align-items:baseline; justify-content:space-between; padding:0 4px 8px;}
+  @media (prefers-reduced-motion: reduce){
+    .sheet{transition:none;}
+    .sheet-scrim{transition:none;}
+  }
+
+  /* ---------- footer ---------- */
+  .stats{
+    margin:0;
+    padding:6px 2px 0;
+    text-align:right;
+    font-size:12.5px; font-weight:600;
+    letter-spacing:.08em;
+    color:var(--cream-dim);
+    font-variant-numeric:tabular-nums;
+  }
+  .stats b{color:var(--cream); font-weight:800;}
+  .backup{
+    display:flex; gap:10px; justify-content:center; flex-wrap:wrap;
+    padding:8px 0 2px;
+  }
+  .backup[hidden]{display:none;}
+  .verb-sm{font-size:14px; padding:7px 16px 9px; min-height:40px;}
+  .backup-note{
+    width:100%; margin:4px 0 0;
+    text-align:center;
+    font-size:11px; color:var(--cream-dim);
+  }
+
+  /* ---------- the shelf: every jar ever filled ---------- */
+  .shelf-view{
+    position:fixed; inset:0; z-index:60;
+    display:flex; flex-direction:column;
+    max-width:520px; margin:0 auto;
+    padding:calc(10px + env(safe-area-inset-top)) 14px calc(4px + env(safe-area-inset-bottom));
+    /* No background of its own: the body's wall shows through, so the
+       wood is one continuous surface across both places (a second copy
+       of the gradient can never phase-align with the body's). The table
+       parts underneath hide while we're looking up. */
+    animation:shelfin .25s ease;
+  }
+  .shelf-view[hidden]{display:none;}
+  @keyframes shelfin{from{opacity:0;}}
+  .shelf-head{display:flex; align-items:baseline; justify-content:space-between; padding:2px 4px 8px;}
+  .shelf-title{
+    white-space:nowrap;
+    margin:0;
+    font-family:var(--marker); font-weight:400;
+    font-size:26px; letter-spacing:.03em;
+    color:var(--cream);
+    text-shadow:0 1px 3px rgba(0,0,0,.35);
+  }
+  .tin{
+    display:flex; align-items:center; gap:7px; margin:0;
+    font-family:var(--marker); font-size:20px;
+    color:var(--cream);
+    text-shadow:0 1px 3px rgba(0,0,0,.35);
+  }
+  .btn-icon{filter:drop-shadow(0 1px 2px rgba(0,0,0,.35));}
+  .shelf-scroll{flex:1; overflow-y:auto; min-height:0; padding:4px 2px 14px;}
+  .shelf-group-label{
+    margin:16px 4px 10px;
+    font-size:11.5px; font-weight:700; letter-spacing:.14em;
+    color:var(--cream-dim);
+  }
+  /* rows are real elements, so the plank spans the full shelf even when
+     jars only fill part of it */
+  .shelf-row{
+    position:relative;
+    display:flex;
+    padding:8px 0 9px; /* headroom for the lids */
+    margin-bottom:16px;
+  }
+  .shelf-row::after{
+    content:''; position:absolute; left:-6px; right:-6px; bottom:0; height:8px;
+    background:linear-gradient(180deg, var(--wood-1), var(--wood-3));
+    border-radius:2px;
+    box-shadow:0 3px 5px rgba(0,0,0,.35);
+  }
+  .sjar{
+    width:calc(100% / var(--cols));
+    display:flex; justify-content:center;
+  }
+  /* a shelved jar is the game's jar at half scale: same glass, same
+     wooden lid, twelve real beads on the same slot grid with jitter */
+  .sjar .sglass{
+    position:relative;
+    width:34px; height:40px;
+    border-radius:5px 5px 8px 8px;
+    background:linear-gradient(180deg, rgba(255,255,255,.20), rgba(255,255,255,.09) 30%, rgba(255,255,255,.13));
+    border:1px solid rgba(255,255,255,.38);
+    box-shadow:inset 0 -5px 8px rgba(0,0,0,.16), 0 2px 4px rgba(0,0,0,.3);
+  }
+  .sjar .sglass::after{ /* shine */
+    content:''; position:absolute; left:9%; top:14%; width:14%; height:60%;
+    border-radius:999px;
+    background:linear-gradient(180deg, rgba(255,255,255,.5), rgba(255,255,255,0));
+  }
+  .sfill{position:absolute; inset:4px 3px 3px;}
+  .sbead{
+    position:absolute;
+    width:7.5px; height:7.5px;
+  }
+  .sjar .slid{
+    position:absolute; left:-3px; right:-3px; top:-6px; height:8px;
+    border-radius:4px;
+    background:linear-gradient(180deg, #8a6a4a, #5f4227);
+    border:1px solid rgba(0,0,0,.35);
+    box-shadow:0 1px 2px rgba(0,0,0,.4);
+  }
+  .sjar.dusty .sglass{opacity:.72; filter:saturate(.7);}
+  .shelf-empty{
+    margin:40px 10px; text-align:center;
+    font-size:14px; font-weight:600; line-height:1.7;
+    color:var(--cream-dim);
+  }
+  .shelf-util{padding-top:6px;}
+
+  /* ---------- the catalog ---------- */
+  .catalog{flex:1; overflow-y:auto; min-height:0; padding:8px 2px;}
+  .cat-items{
+    display:grid; grid-template-columns:repeat(3, 1fr);
+    gap:12px; max-width:400px; margin:6px auto 0;
+  }
+  /* felt swatches, not paper: beads present best on felt — the tray is
+     the proof — so the catalog is a sample board */
+  .cat-item{
+    position:relative;
+    aspect-ratio:1;
+    display:flex; align-items:center; justify-content:center;
+    padding:10px 8px 22px;
+    border:0; cursor:pointer;
+    border-radius:12px;
+    font-family:var(--marker); font-size:16px; color:var(--cream);
+    background:
+      radial-gradient(90% 70% at 30% 25%, rgba(255,255,255,.05), transparent 60%),
+      var(--felt);
+    box-shadow:
+      inset 0 2px 8px rgba(0,0,0,.35),
+      inset 0 -1px 3px rgba(255,255,255,.05),
+      0 3px 7px rgba(0,0,0,.3);
+  }
+  .cat-item .prev{position:relative; width:64px; height:64px;}
+  .cat-item .cat-price{
+    position:absolute; right:10px; bottom:8px;
+    display:flex; align-items:center; gap:5px;
+    font-size:14.5px; white-space:nowrap;
+    text-shadow:0 1px 2px rgba(0,0,0,.4);
+  }
+  .cat-item.owned{cursor:default;}
+  .cat-item.confirm{outline:2px dashed var(--cream); outline-offset:-7px;}
+  .cat-item.no{animation:jiggle .5s ease;}
+  .cat-note{
+    margin:20px auto 0; max-width:340px; text-align:center;
+    font-size:11.5px; color:var(--cream-dim); line-height:1.8;
+  }
+
+  /* ---------- bead faces ---------- */
+  /* Every bead is an inline SVG face (see shapeFace): the bevel follows
+     each silhouette's own contour, and round is simply the fourth shape.
+     Host elements keep geometry and the full round touch target. */
+  .bead .face,.mini .face,.sbead .face,.prev .face{
+    position:absolute; inset:0; width:100%; height:100%;
+    pointer-events:none;
+  }
+  .bead .face,.prev .face{filter:drop-shadow(0 2px 3px rgba(0,0,0,.35));}
+  .mini .face,.sbead .face{filter:drop-shadow(0 1px 1px rgba(0,0,0,.3));}
+
+  .sr{
+    position:absolute; width:1px; height:1px;
+    overflow:hidden; clip:rect(0 0 0 0); white-space:nowrap;
+  }
+
+  @media (prefers-reduced-motion: reduce){
+    .bead.landing,.jar.pop,.jar.jiggle .glass,.mini.drop-in,.spark,.shelf-view,.cat-item.no{animation:none;}
+    .jar,.glass,.lid,.verb-pill,.hint,.mini{transition:none;}
+  }
+  @media (min-height:760px){
+    .glass{height:86px;}
+    .bead{width:46px; height:46px; margin:-23px 0 0 -23px;}
+  }

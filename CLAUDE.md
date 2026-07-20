@@ -173,16 +173,18 @@ using it for parked work loses the fact that real items remain.
 
 ## Build, Run & Deploy
 
-There is no build step: the game is `index.html` (the scene — DOM,
-interaction, audio, inline CSS) plus `rules.js` (the pure rules as a
-native ES module the browser loads directly; vanilla JS, no
-dependencies), and thin PWA satellites: `manifest.webmanifest`, `sw.js`,
-and generated `icon-*.png`. The service worker is stale-while-revalidate,
-so installed apps play offline and pick up a deploy on their **next**
-launch (curl-based deploy verification is unaffected — it hits the
-network). `index.html` and `rules.js` are a matched pair: bump `sw.js`'s
-`CACHE` version string whenever the import/export surface between them
-changes, or when the asset list changes.
+There is no build step: the game is four files the browser loads
+natively (vanilla JS, no dependencies) — `index.html` (the scene
+skeleton: markup only), `styles.css` (the CSS scene), `game.js` (DOM,
+interaction, audio, persistence; an ES module), and `rules.js` (the pure
+rules it imports) — plus thin PWA satellites: `manifest.webmanifest`,
+`sw.js`, and generated `icon-*.png`. The service worker is
+stale-while-revalidate, so installed apps play offline and pick up a
+deploy on their **next** launch (curl-based deploy verification is
+unaffected — it hits the network). The four files are a matched set:
+bump `sw.js`'s `CACHE` version string whenever the surfaces between them
+change (markup ids/classes, the import/export list) or the asset list
+changes.
 
 ```bash
 python3 -m http.server 8000        # run locally → http://localhost:8000
@@ -198,8 +200,9 @@ deploy on a device.
 ## Architecture Overview
 
 Pure rules — palette, composers, cadence, caps, eviction, save
-migration — live in `rules.js`; everything else lives in `index.html`,
-in this order:
+migration — live in `rules.js`. The markup skeleton is `index.html`, the
+art direction is `styles.css`, and everything behavioral below lives in
+`game.js`:
 
 - **CSS scene** — the committed single-theme art direction (walnut wood,
   spruce felt tray, glass jars). No cards or web chrome; the scene is the UI.
