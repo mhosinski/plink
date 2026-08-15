@@ -7,3 +7,23 @@
 .beads/interactions.jsonl
 native/node_modules/
 native/www/
+
+# --- seed baseline: secret carriers and local state (ai-toolkit/project-seed) ---
+.env
+.env.*
+!.env.example
+!.env.*.example
+*.pem
+*.key
+*.p12
+*.jwk
+.access-key
+.*-key
+.*-token
+.envrc
+.direnv/
+node_modules/
+beads-snapshot*.jsonl
+# native signing material (Android template leaves these commented out)
+*.jks
+*.keystore
