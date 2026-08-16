@@ -28,13 +28,15 @@ Pages serves `main` at `https://mhosinski.github.io/plink/` to anyone.
 Everything committed here — code, GENESIS/CANON, this doc — is public by
 design. Two things to remember because of that:
 
-- **Beads sync goes to the same public remote.** `.beads/config.yaml` sets
-  `sync.remote` to the repo, and `refs/dolt/data` is present on origin — so
-  the beads database (issues, notes, memories, the handoff) is readable by
-  anyone who fetches that ref. Beads content here is fine to be public
-  (design decisions, family first-names-as-roles); keep it that way: no
-  addresses, no device identifiers, no Apple/Google account details in
-  beads. See the findings log.
+- **Beads sync goes to a separate PRIVATE remote** since 2026-08-15:
+  `.beads/config.yaml` `sync.remote` = `mhosinski/plink-beads` (private;
+  bd stores the Dolt DB as a blobstore under `refs/dolt/data` there). The
+  public repo's `refs/dolt/data` / `__dolt_remote_info__` were deleted the
+  same day — a snapshot had been public from 2026-07-12 until then (design
+  decisions and family first-names-as-roles; nothing personal), and GitHub
+  may retain the objects until GC. Rule stays: no addresses, no device
+  identifiers, no Apple/Google account details in beads. A fresh clone
+  needs SSH access to `plink-beads` for `bd dolt pull/push`.
 - **Saves are a public contract** (CLAUDE.md): real players run builds we
   don't control the cache of. That is a compatibility duty, not a
   confidentiality one, but it is the closest thing plink has to "other
@@ -168,7 +170,7 @@ saves are the contract. Who to tell: the family group chat.
 | Date | Finding | Disposition |
 | ---- | ------- | ----------- |
 | 2026-08-15 | No secrets, no network calls, no server; full-history gitleaks scan clean (60 commits) | Nothing to rotate — recorded as the baseline |
-| 2026-08-15 | Beads DB syncs to `refs/dolt/data` on the **public** repo — issues, notes and memories (incl. the handoff) are world-readable | Accepted for now: content is design history and roles, not personal data; rule added above (no personal details in beads); reconsider a private beads remote if the project ever holds player-identifying info (plink-rlb) |
+| 2026-08-15 | Beads DB synced to `refs/dolt/data` on the **public** repo — issues, notes and memories (incl. the handoff) were world-readable (snapshot public 2026-07-12 → 2026-08-15) | **Fixed same day** (plink-rlb): `sync.remote` repointed to private `mhosinski/plink-beads` (`bd dolt remote add origin …` rewrites both the dolt remote and `config.yaml`), pushed, public refs deleted; content reviewed as design history only, no rotation needed |
 | 2026-08-15 | Android template `.gitignore` ships its keystore lines commented out; no root-level guard before a release keystore exists | Fixed — root `.gitignore` now ignores `*.jks` / `*.keystore` alongside the seed's `*.pem` / `*.p12` / `*.key` |
 | 2026-08-15 | No CI audit gate for `native/`; npm has no cooldown mechanics | Accepted — surface is Capacitor only; checkpoint runs `npm audit`, publish-date check by hand before bumps |
 
