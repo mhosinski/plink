@@ -2,6 +2,7 @@
 
 This file provides instructions and context for AI coding agents working on this project.
 
+<!-- BEGIN SEED session-start base:0f113002a052068df5cfd908fc015133f5f0aeef -->
 ## Session Start
 
 At the beginning of every session, run these steps in order:
@@ -89,7 +90,9 @@ This protocol applies when ending a Beads implementation workflow. It is subordi
 - Do not commit or push without clear authority from the active profile or the current user request.
 - If a required sync or push is blocked, stop and report the exact command and error.
 <!-- END BEADS INTEGRATION -->
+<!-- END SEED session-start -->
 
+<!-- BEGIN SEED security-posture base:0a0087c1698d109a4013965824c7002590e78178 -->
 ## Security Posture
 
 `docs/SECURITY.md` answers the six posture questions for this project (data,
@@ -111,7 +114,9 @@ Milestone checkpoint: at the same come-up-for-air moment as the dependency
 review (each native-release step is a natural one), re-read
 `docs/SECURITY.md` against reality and run `/security-review` on the
 milestone's diff; record findings as beads and the checkpoint date in the doc.
+<!-- END SEED security-posture -->
 
+<!-- BEGIN SEED session-completion base:02afb21c583b98e92fe834cb0aad29fd00ecd913 -->
 ## Session Completion (project policy)
 
 This repository explicitly opts into the **team-maintainer** profile above: this
@@ -137,7 +142,12 @@ session**, you MUST complete ALL steps below. Work is NOT complete until
    ```
 5. **Clean up** - Clear stashes, prune remote branches
 6. **Verify** - All changes committed AND pushed
-7. **Hand off** - Update `handoff-next-session` (see shape below)
+7. **Continuity check** - Run the short form of `/continuity-audit` (see
+   `rule-handoff-continuity`): procedures used → skill; silent rules or user
+   corrections → memory / GENESIS; durable content in the handoff → moved out
+   with a pointer. Run the full form after a session with a lot of thinking
+   or a direction change.
+8. **Hand off** - Update `handoff-next-session` (see shape below)
 
 **CRITICAL RULES:**
 - Work is NOT complete until `git push` succeeds
@@ -150,7 +160,10 @@ session**, you MUST complete ALL steps below. Work is NOT complete until
 
 The handoff memory records state and rationale, not tasks — tasks live in beads
 issues; the handoff is the bridge that tells the next session which bead to
-pick up and what context it needs. Follow this shape:
+pick up and what context it needs. It is **a bridge, not a store**: anything
+that must survive more than one session (a procedure, a rule, an archive
+layout, a preference) lives in a skill, memory, doc or bead, and the handoff
+points at it. Follow this shape:
 
 - **Header line:** date, one-phrase session summary, repo/build state, and any
   **pending gate** (e.g. "user was about to test X; confirm before building on it")
@@ -160,7 +173,9 @@ pick up and what context it needs. Follow this shape:
   open and which are close-eligible pending confirmation
 - **PROCESS:** workflow lessons hardened this session — mistakes made and the
   corrected procedure — so process improvements compound
+<!-- END SEED session-completion -->
 
+<!-- BEGIN SEED parking base:8bed7f6c2e46d5a9edbf0d9f28b6d26357e127fc -->
 ## Parking Work (Deferred Tails)
 
 A feature push typically reaches ~80% before hitting diminishing returns and the
@@ -192,6 +207,7 @@ to pull items back into the active set.
 for later" — it leaves `bda`/`bd ready`, stays local, searchable, and instantly
 resurfaceable, and does not inflate an epic's completion. `closed` means *done*;
 using it for parked work loses the fact that real items remain.
+<!-- END SEED parking -->
 
 ## Build, Run & Deploy
 
@@ -285,6 +301,7 @@ art direction is `styles.css`, and everything behavioral below lives in
   rule and its provenance live in `docs/CANON.md` (and plink-2q1) — CANON
   is the authority; this line is the reminder.
 
+<!-- BEGIN SEED testing-philosophy base:6452953b514c5df7c0489821dfc5b29dfe7d40ca -->
 ## Testing Philosophy
 
 Use tests to protect core rules and formulas, not to simulate the full runtime.
@@ -305,7 +322,9 @@ the bead or handoff.
 
 When adding a feature, extract pure helpers only when it makes the rule easier
 to test or reuse. Do not add abstractions solely to satisfy a test.
+<!-- END SEED testing-philosophy -->
 
+<!-- BEGIN SEED implementation-order base:68e0d668895d39b4fcbe108aff8c3f6086946794 -->
 ## Feature Implementation Order
 
 For every new feature, implement in this sequence:
@@ -316,3 +335,4 @@ For every new feature, implement in this sequence:
 4. Scene polish: CSS, motion (with reduced-motion path), sound (consonant)
 5. Extend `tests/run.js` when the change touches rules or invariants
 6. Manual smoke test on a phone via the live deploy
+<!-- END SEED implementation-order -->

@@ -27,3 +27,5 @@ beads-snapshot*.jsonl
 # native signing material (Android template leaves these commented out)
 *.jks
 *.keystore
+# --- seed baseline additions (seed-audit) ---
+.venv/
